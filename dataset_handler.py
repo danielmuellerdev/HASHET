@@ -37,21 +37,10 @@ def _cleaning(doc: SpacyDoc) -> str:
 def _remove_stopwords(tokens: List[SpacyToken]) -> List[SpacyToken]:
     return [token for token in tokens if not token.is_stop and token.text not in WORDS_TO_REMOVE] # TODO test
 
-def _lemmatize(
-    tokens: List[SpacyToken],
-    ignore_acronyms: bool = True,
-    ignore_hashtags: bool = True
-    ) -> List[SpacyToken]:
-    
+def _lemmatize(tokens: List[SpacyToken], ignore_acronyms: bool = True) -> List[SpacyToken]:
     lemmatized_tokens = []
-    is_hashtag = False
     for token in tokens:
-        if token.text == "#":
-            is_hashtag = True
-        elif ignore_hashtags and is_hashtag:
-            lemmatized_tokens.append('#' + token.text)
-            is_hashtag = False
-        elif ignore_acronyms and _is_acronym(token.text):
+        if ignore_acronyms and _is_acronym(token.text):
             lemmatized_tokens.append(token.text)
         else:
             lemmatized_tokens.append(token.lemma_)
