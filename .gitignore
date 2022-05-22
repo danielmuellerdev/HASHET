@@ -1,0 +1,5 @@
+save_files/*
+datasets/*
+__pycache__/*
+input/*
+.DS_STORE

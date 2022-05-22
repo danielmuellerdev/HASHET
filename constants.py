@@ -32,7 +32,7 @@ WINDOW_SIZE = 5
 TRAIN_TEST_INPUT = SAVE_FOLDER + 'model_sentences.txt'
 
 # skip hashtag cleaning before sentence embedding parameter
-SKIP_HASHTAG_REMOVING = True
+SKIP_HASHTAG_REMOVAL = True
 
 TRAIN_CORPUS = SAVE_FOLDER + "train_corpus.txt"
 TEST_CORPUS = SAVE_FOLDER + "test_corpus.txt"

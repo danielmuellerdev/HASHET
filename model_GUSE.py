@@ -22,7 +22,7 @@ def transfer_and_fine_tune(sentences_train, sentences_test, targets_train, targe
     from keras.callbacks import ModelCheckpoint
     from keras.layers.core import Dense, Activation
     from keras.models import model_from_json
-    from keras.optimizers import Adam
+    from tensorflow.keras.optimizers import Adam
 
     print("GUSE version")
 
