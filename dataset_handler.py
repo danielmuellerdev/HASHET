@@ -13,7 +13,6 @@ from spacy.tokens.doc import Doc as SpacyDoc
 from spacy.tokens.token import Token as SpacyToken
 import unidecode
 
-import emoji
 import gensim
 
 import constants as c
@@ -28,7 +27,6 @@ WORDS_TO_REMOVE = ['rt', 'ht', 'htt', 'https', 'http', 'https t']
 
 
 def _cleaning(doc: SpacyDoc) -> str:
-    # tokens = capture_bigrams(words_doc) # ? ist der Output tokens? warhscheiunliuch eher List str
     tokens = list(doc)
     tokens = _remove_stopwords(tokens)
     tokens = _lemmatize(tokens)
@@ -46,23 +44,6 @@ def _lemmatize(tokens: List[SpacyToken], ignore_acronyms: bool = True) -> List[S
             lemmatized_tokens.append(token.lemma_)
 
     return lemmatized_tokens
-    
-
-# def _cleaning(words_doc: SpacyDoc) -> str:
-#     """Remove Stopwords and lemmatize all words except hashtags."""
-#     txt = []
-#     is_hashtag = False
-#     for token in words_doc:
-#         if token.text == "#":
-#             is_hashtag = True
-#         elif not (token.is_stop or (len(token.text) < 2 and token.text not in not_lemmatize)):
-#             if is_hashtag:
-#                 txt.append('#' + token.text)
-#                 is_hashtag = False
-#             else:
-#                 txt.append(token.text if token.text in not_lemmatize else token.lemma_)
-#     return ' '.join(txt)
-
 
 def _get_tweet_corpus(file_paths: List[str], filter_out_retweets: bool = True, is_custom_dataset: bool = False) -> List[List[str]]:
     print('Read files')
@@ -144,8 +125,6 @@ def _clean_and_phrase(tweet_corpus: List[List[str]], spacy_batch_size: int = 100
     for i, doc in enumerate(nlp.pipe(cleaned_corpus_with_bigrams, batch_size=spacy_batch_size, n_process=4)):
         cleaned_tweet = _cleaning(doc)
 
-        # remove all characters except: words, digits and hashtag-symbols
-        # cleaned_tweet = re.sub('[^#\\d\\w_]+', ' ', cleaned_tweet).strip()
         txt.append(cleaned_tweet)
         if i % (spacy_batch_size * 20) == 0:
             print(f'nlp.pipe: [{i} / {len(cleaned_corpus)}]')
