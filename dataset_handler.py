@@ -22,7 +22,7 @@ URL_REGEX = r"@\w*|https?:?\/?\/?[\w.\/]*|https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~
 USER_NAMES_REGEX = re.compile(r'@\S+')
 ACRONYM_REGEX = re.compile(r'[A-Z]{2,}$')
 HASHTAG_REGEX = re.compile(r'#\S+')
-LETTERS_AND_UNDERSCORES_REGEX = re.compile(r'[^\w+_ ]+')
+WHITE_LIST = re.compile(r'[^\w+_ ]+')
 WORDS_TO_REMOVE = ['rt', 'ht', 'htt', 'https', 'http', 'https t']
 
 
@@ -96,8 +96,8 @@ def _to_lowercase(text: str) -> str:
 def _remove_hashtags(text: str) -> str:
     return re.sub(HASHTAG_REGEX, '', text)
 
-def _remove_all_except_letters_and_underscores(text: str) -> str:
-    return re.sub(LETTERS_AND_UNDERSCORES_REGEX, '', text).strip()
+def _remove_all_except_letters_spaces_underscores(text: str) -> str:
+    return re.sub(WHITE_LIST, '', text).strip()
 
 def _clean_and_phrase(tweet_corpus: List[List[str]], spacy_batch_size: int = 100) -> List[str]:
     cleaned_corpus = []
@@ -108,7 +108,7 @@ def _clean_and_phrase(tweet_corpus: List[List[str]], spacy_batch_size: int = 100
         tweet = _remove_user_names(tweet)
         tweet = _handle_accented_characters(tweet)
         tweet = _to_lowercase(tweet)
-        tweet = _remove_all_except_letters_and_underscores(tweet)
+        tweet = _remove_all_except_letters_spaces_underscores(tweet)
 
         cleaned_corpus.append(tweet.split())
 
