@@ -40,7 +40,7 @@ TEST_CORPUS = SAVE_FOLDER + "test_corpus.txt"
 # Google Universal Sentence Encoder path
 GUSE_PATH = "https://tfhub.dev/google/universal-sentence-encoder-large/5"
 
-PERC_TEST = 0.25
+TESTSET_SIZE_IN_PERCENT = 0.25
 
 H_REMOVING_DICT = SAVE_FOLDER + 'h_removing_dict.pkl'
 
