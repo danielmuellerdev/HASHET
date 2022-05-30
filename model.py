@@ -80,7 +80,7 @@ def local_nhe(hashtags_test, predicted_hashtag_list, n):
                 nearest_neighbors = []
                 try:
                     nearest_neighbors.extend(
-                        word_embedding_model.retain_hts(emb_model.wv.most_similar(pred_h, topn=top_n_words))[:n])
+                        word_embedding_model.retain_hashtags(emb_model.wv.most_similar(pred_h, topn=top_n_words))[:n])
                 except:
                     pass
                 for nn in nearest_neighbors:

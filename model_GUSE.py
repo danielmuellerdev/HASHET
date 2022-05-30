@@ -116,7 +116,7 @@ def predict_top_k_hashtags(sentences, k):
 
     emb_model = word_embedding_model.load_Word2Vec_model()
     top_n_words = 1000
-    result = [word_embedding_model.retain_hts(emb_model.wv.similar_by_vector(h_vect, topn=top_n_words))[:k] for h_vect
+    result = [word_embedding_model.retain_hashtags(emb_model.wv.similar_by_vector(h_vect, topn=top_n_words))[:k] for h_vect
               in h_list]
 
     return result
