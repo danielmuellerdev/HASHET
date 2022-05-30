@@ -16,13 +16,12 @@ RUN pip install spacy
 RUN pip install tensorflow_hub==0.11.0
 RUN pip install matplotlib==3.1.3
 RUN pip install Keras==2.4.3
-RUN pip install numpy==1.20.11
+RUN pip install "numpy<1.22.0"
 RUN pip install scikit_learn==0.24.1
 RUN pip install tensorflow -f https://tf.kmtea.eu/whl/stable.html
+RUN pip install unidecode
 
 RUN python -m spacy download en_core_web_lg
-
-RUN pip install unidecode
 
 # [Optional] If your pip requirements rarely change, uncomment this section to add them to the image.
 # COPY requirements.txt /tmp/pip-tmp/
