@@ -25,27 +25,7 @@ HASHTAG_REGEX = re.compile(r'#\S+')
 WHITE_LIST = re.compile(r'[^\w+_ ]+')
 WORDS_TO_REMOVE = ['rt', 'ht', 'htt', 'https', 'http', 'https t']
 
-
-def _cleaning(doc: SpacyDoc) -> str:
-    tokens = list(doc)
-    tokens = _remove_stopwords(tokens)
-    tokens = _lemmatize(tokens)
-    return ' '.join(tokens)
-
-def _remove_stopwords(tokens: List[SpacyToken]) -> List[SpacyToken]:
-    return [token for token in tokens if not token.is_stop and token.text not in WORDS_TO_REMOVE] # TODO test
-
-def _lemmatize(tokens: List[SpacyToken], ignore_acronyms: bool = True) -> List[SpacyToken]:
-    lemmatized_tokens = []
-    for token in tokens:
-        if ignore_acronyms and _is_acronym(token.text):
-            lemmatized_tokens.append(token.text)
-        else:
-            lemmatized_tokens.append(token.lemma_)
-
-    return lemmatized_tokens
-
-def _get_tweet_corpus(file_paths: List[str], filter_out_retweets: bool = True, is_custom_dataset: bool = False) -> List[List[str]]:
+def _read_tweets_from_file(file_paths: List[str], filter_out_retweets: bool = True, is_custom_dataset: bool = False) -> List[List[str]]:
     print('Read files')
     tweet_corpus = []
     for file_path in file_paths:
@@ -64,9 +44,6 @@ def _get_tweet_corpus(file_paths: List[str], filter_out_retweets: bool = True, i
 
             words = tweet['text'].split()
             tweet_corpus.append(words)
-
-    # test
-    # tweet_corpus = ["Hello this is a test of user's manual construction site voter San Francisco voted voter vote Cloud computing, major manufacturing companies. :) #matters 🙈".split()]
 
     return tweet_corpus
 
@@ -99,8 +76,49 @@ def _remove_hashtags(text: str) -> str:
 def _remove_all_except_letters_spaces_underscores(text: str) -> str:
     return re.sub(WHITE_LIST, '', text).strip()
 
-def _clean_and_phrase(tweet_corpus: List[List[str]], spacy_batch_size: int = 100) -> List[str]:
+def _add_common_bigrams(corpus: List[str]) -> List[str]:
+    corpus_with_tokens: List[List[str]] = [tweet.split() for tweet in corpus]
+    corpus_with_bigrams = []
+    bigrams = gensim.models.Phrases(corpus_with_tokens)
+    for tweet_tokens in corpus_with_tokens:
+        tweet_tokens_with_bigrams = bigrams[tweet_tokens] # new york -> new_york TODO nur nounphrases zulassen? dafür doch spacy nehmen?
+        corpus_with_bigrams.append(' '.join(tweet_tokens_with_bigrams))
+
+    return corpus_with_bigrams
+
+def _remove_stopwords(tokens: List[SpacyToken]) -> List[SpacyToken]:
+    return [token for token in tokens if not token.is_stop and token.text not in WORDS_TO_REMOVE] # TODO test
+
+def _lemmatize(tokens: List[SpacyToken], ignore_acronyms: bool = True) -> List[SpacyToken]:
+    lemmatized_tokens = []
+    for token in tokens:
+        if ignore_acronyms and _is_acronym(token.text):
+            lemmatized_tokens.append(token.text)
+        else:
+            lemmatized_tokens.append(token.lemma_)
+
+    return lemmatized_tokens
+
+def _remove_stopwords_and_lemmatize(corpus: List[str], spacy_batch_size: int = 100) -> List[str]:
+    nlp = spacy.load('en_core_web_lg', disable=['parser', 'ner'])
+
+    # Taking advantage of spaCy .pipe() attribute to speed-up the cleaning process:
     cleaned_corpus = []
+    for i, doc in enumerate(nlp.pipe(corpus, batch_size=spacy_batch_size, n_process=4)):
+        tokens = list(doc)
+        tokens = _remove_stopwords(tokens)
+        tokens = _lemmatize(tokens)
+        
+        cleaned_tweet = ' '.join(tokens)
+
+        cleaned_corpus.append(cleaned_tweet)
+        if i % (spacy_batch_size * 20) == 0:
+            print(f'Removing stopwords and lemmatizing with spacy: [{i} / {len(corpus)}]')
+
+    return cleaned_corpus
+
+def _preprocess_tweet_corpus(tweet_corpus: List[List[str]]) -> List[str]:
+    cleaned_corpus: List[str] = []
     for tweet_tokens in tweet_corpus:
         tweet = ' '.join(tweet_tokens)
         tweet = _remove_urls(tweet)
@@ -110,35 +128,14 @@ def _clean_and_phrase(tweet_corpus: List[List[str]], spacy_batch_size: int = 100
         tweet = _to_lowercase(tweet)
         tweet = _remove_all_except_letters_spaces_underscores(tweet)
 
-        cleaned_corpus.append(tweet.split())
+        cleaned_corpus.append(tweet)
 
-    cleaned_corpus_with_bigrams = []
-    bigrams = gensim.models.Phrases(cleaned_corpus)
-    for tweet_tokens in cleaned_corpus:
-        tweet_tokens_with_bigrams = bigrams[tweet_tokens] # new york -> new_york TODO nur nounphrases zulassen? dafür doch spacy nehmen?
-        cleaned_corpus_with_bigrams.append(' '.join(tweet_tokens_with_bigrams))
+    cleaned_corpus_with_bigrams = _add_common_bigrams(cleaned_corpus)
+    final_cleaned_corpus = _remove_stopwords_and_lemmatize(cleaned_corpus_with_bigrams)
 
-    nlp = spacy.load('en_core_web_lg', disable=['parser', 'ner'])
-
-    # Taking advantage of spaCy .pipe() attribute to speed-up the cleaning process:
-    txt = []
-    for i, doc in enumerate(nlp.pipe(cleaned_corpus_with_bigrams, batch_size=spacy_batch_size, n_process=4)):
-        cleaned_tweet = _cleaning(doc)
-
-        txt.append(cleaned_tweet)
-        if i % (spacy_batch_size * 20) == 0:
-            print(f'nlp.pipe: [{i} / {len(cleaned_corpus)}]')
-
-    return txt
-
+    return final_cleaned_corpus
 
 def _store(corpus, file):
-    """
-        Store list of list sentences in text file
-
-        :param1 file.
-        :return: corpus represented in list of list of words
-    """
     with open(file, 'w', encoding="utf8") as stream_out:
         for line in corpus:
             for word in line:
@@ -147,12 +144,6 @@ def _store(corpus, file):
 
 
 def load(file):
-    """
-        Load text file in list of list sentences
-
-        :param1 file.
-        :return: corpus represented in list of list of words
-    """
     sentences = []
     with open(file, "r", encoding="utf8") as stream_in:
         for line in stream_in:
@@ -160,17 +151,21 @@ def load(file):
     return sentences
 
 
-def preprocess_data(file_paths: List[str], save_file: Path = 'sentences.txt', is_custom_dataset: bool = False):
+def preprocess_tweets(file_paths: List[str], save_file: Path = 'sentences.txt', is_custom_dataset: bool = False) -> List[List[str]]:
     """
         Read data, clean data, calculate bigrams and store in save_file for Word2Vec model
 
         :param1 save_file.
     """
-    tweet_corpus = _get_tweet_corpus(file_paths, filter_out_retweets=False, is_custom_dataset=is_custom_dataset)
-    sentences = _clean_and_phrase(tweet_corpus)
+    tweet_corpus = _read_tweets_from_file(file_paths, filter_out_retweets=False, is_custom_dataset=is_custom_dataset)
+    preprocessed_tweet_corpus = _preprocess_tweet_corpus(tweet_corpus)
+
+    # TODO json.dump()
     with open(save_file, 'w', encoding="utf8") as stream_out:
-        for line in sentences:
+        for line in preprocessed_tweet_corpus:
             stream_out.write(line+'\n')
+
+    return preprocessed_tweet_corpus
 
 
 def preprocess_data_for_sentence_embedding(dataset_file_paths: List[Path], is_custom_dataset: bool = False) -> None:
@@ -179,7 +174,8 @@ def preprocess_data_for_sentence_embedding(dataset_file_paths: List[Path], is_cu
 
         :param1 file: specify input file in order to not use the whole input folder.
     """
-    tweet_corpus = _get_tweet_corpus(dataset_file_paths, is_custom_dataset=is_custom_dataset)
+    # TODO wie preprocess_data oder das callen
+    tweet_corpus = _read_tweets_from_file(dataset_file_paths, is_custom_dataset=is_custom_dataset)
     corpus_cleaned = [] # TODO hier müsste eigentlich das gleiche gemnacht werden, wie bei preprocessdata
     for tweet in tweet_corpus:
         tweet_cleaned = []
@@ -228,18 +224,19 @@ def load_without_not_relevant_hts(input: Path, min_count: int = c.MINCOUNT) -> L
 
 
 def prepare_train_test(
-        perc_test, 
+        testset_size_in_percent = c.TESTSET_SIZE_IN_PERCENT,
         train_test_input: Path = c.TRAIN_TEST_INPUT,
-        train_corpus: Path = c.TRAIN_CORPUS,
-        test_corpus: Path = c.TEST_CORPUS
+        train_corpus_file_path: Path = c.TRAIN_CORPUS,
+        test_corpus_file_path: Path = c.TEST_CORPUS
     ):
     """
         Split corpus in train and test and store them
 
         :param1 perc_test: test corpus percentage in float.
     """
-    corpus_with_bigrams = load_without_not_relevant_hts(train_test_input)  # emb.load(TRAIN_TEST_INPUT) #
+    corpus_with_bigrams = load_without_not_relevant_hts(train_test_input)
     random.shuffle(corpus_with_bigrams)
+
     cleaned_corpus_with_bigrams = []
     # keeping tweets with at least one hashtag and one word
     for tweet in corpus_with_bigrams:
@@ -254,8 +251,14 @@ def prepare_train_test(
                 bool_w = True
         if bool_w and bool_h:
             cleaned_corpus_with_bigrams.append(tweet)
-    _store(cleaned_corpus_with_bigrams[int(len(cleaned_corpus_with_bigrams) * perc_test):], train_corpus)
-    _store(cleaned_corpus_with_bigrams[:int(len(cleaned_corpus_with_bigrams) * perc_test)], test_corpus)
+    
+    tweet_corpus_train = cleaned_corpus_with_bigrams[int(len(cleaned_corpus_with_bigrams) * testset_size_in_percent):]
+    tweet_corpus_test = cleaned_corpus_with_bigrams[:int(len(cleaned_corpus_with_bigrams) * testset_size_in_percent)]
+
+    _store(tweet_corpus_train, train_corpus_file_path)
+    _store(tweet_corpus_test, test_corpus_file_path)
+
+    return tweet_corpus_train, tweet_corpus_test
 
 
 def hashtags_list(tweet, model):
@@ -269,7 +272,7 @@ def hashtags_list(tweet, model):
         for r in emb.REMOVE_WORDS:
             if r == word_cleaned:
                 word_cleaned = ''
-        if len(word_cleaned) > 1 and '#' in word_cleaned and word_cleaned in model.wv.vocab: 
+        if len(word_cleaned) > 1 and '#' in word_cleaned and word_cleaned in model.wv.vocab:
             ht_list.append(word_cleaned)
     return ht_list
 
@@ -342,13 +345,13 @@ def prepare_model_inputs_and_targets(w_emb):
     ht_lists = []
     for tweet in train:
         ht_list = hashtags_list(tweet, w_emb)
-        h_embedding = emb.tweet_arith_embedding(w_emb, " ".join(ht_list))
+        h_embedding = emb.generate_target(w_emb, " ".join(ht_list))
         if h_embedding is not None:
             targets_train.append(emb.np.array(h_embedding))
             sentences_train.append(tweet)
     for tweet in test:
         ht_list = hashtags_list(tweet, w_emb)
-        h_embedding = emb.tweet_arith_embedding(w_emb, " ".join(ht_list))
+        h_embedding = emb.generate_target(w_emb, " ".join(ht_list))
         if h_embedding is not None:
             targets_test.append(h_embedding)
             sentences_test.append(tweet)
