@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import multiprocessing
-from typing import List
+from typing import List, Union, Dict
 from pathlib import Path
 
 import gensim
@@ -9,6 +9,7 @@ import numpy as np
 from gensim.models import Word2Vec
 
 import constants as c
+from tweet import Tweet
 
 
 class WordEmbeddingModel:
@@ -25,29 +26,32 @@ class WordEmbeddingModel:
                             min_alpha=0.001, negative=10,
                             workers=cores - 1)
 
-    def train(self, tweet_corpus: List[List[str]]):
+    def train(self, tweet_corpus: List[Tweet]):
         """ Create and stores Word2Vec model """
-        self.w2v_model.build_vocab(tweet_corpus, progress_per=10)
-        self.w2v_model.train(tweet_corpus, total_examples=self.w2v_model.corpus_count, epochs=50, report_delay=1)
+        tweet_texts = [tweet.text for tweet in tweet_corpus]
+        self.w2v_model.build_vocab(tweet_texts, progress_per=10)
+        self.w2v_model.train(tweet_texts, total_examples=self.w2v_model.corpus_count, epochs=50, report_delay=1)
         self.w2v_model.save(self.save_file_path)
     
     def load(self):
         self.w2v_model = Word2Vec.load(c.W2V_SAVE_FILE_NAME)
 
-    def generate_target(self, tweet):
-        tw_list = tweet.split()
-        den = 0
-        sent_embedding = np.zeros(self.latent_space_dim)
-        for word in tw_list:
-            try:
-                emb = self.w2v_model.wv[word]
-                den += 1
-                sent_embedding += emb
-            except:
-                pass
-        return None if den == 0 else sent_embedding / den      
+    def remove_hashtags_not_part_of_the_vocab(self, hashtags: List[str]) -> List[str]:
+        remaining_hashtags = [hashtag for hashtag in hashtags if hashtag in self.w2v_model.wv.vocab]
 
-def retain_hashtags(top_emb):
+        if hashtags != remaining_hashtags:
+            print(
+                'some hashtags were filtered out since they are not contained in the Word2Vec-Vocab',
+                f'tweet-hashtags: {hashtags} | hashtags after filtering: {remaining_hashtags}'
+            )
+
+        return remaining_hashtags
+
+    def generate_target(self, hashtags: List[str]) -> Union[np.array, None]:
+        hashtag_embeddings = [self.w2v_model.wv[hashtag] for hashtag in hashtags]
+        return np.mean(hashtag_embeddings) if len(hashtag_embeddings) > 0 else None
+
+def retain_hashtags(top_emb): # TODO rewrite?
     top_emb_hts = []
     for tuple in top_emb:
         if '#' in tuple[0]:
