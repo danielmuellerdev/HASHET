@@ -1,8 +1,14 @@
-#!/usr/bin/env python
+from typing import List
+from pathlib import Path
+
+import numpy as np
 
 import constants as c
-import word_embedding_model
+from word_embedding_model import WordEmbeddingModel
 import dataset_handler as dh
+from tweet import Tweet
+
+
 
 if c.SENTENCE_ENCODING_MODEL == c.GUSE:
     import model_GUSE as model
@@ -34,19 +40,20 @@ def predict_top_k_hashtags(sentences, k):
     return model.predict_top_k_hashtags(sentences, k)
 
 
-def predict_hashtags_and_store_results(test_file, sentences):
+def predict_hashtags_and_store_results(
+    word_emb_model: WordEmbeddingModel, test_tweets: List[Tweet], sentences: np.ndarray,
+    results_file_path: Path = 'results.txt'
+) -> None:
     """
         Predict hashtags for input sentence embeddings (embeddings_list)
 
         :param1 test_file: train sentence embeddings.
         :param2 sentences: test sentence embeddings.
     """
-    w2v_model = word_embedding_model.load_Word2Vec_model()
-    test_corpus = dh.load(test_file)
     predictions = predict_top_k_hashtags(sentences, 100)
-    with open("results.txt", "w", encoding="UTF-8") as out:
-        for tweet, hashtags in zip(test_corpus, predictions):
-            original_hashtags = dh.hashtags_list(tweet, w2v_model)
+    with open(results_file_path, 'w', encoding='utf-8') as out:
+        for tweet, hashtags in zip(test_tweets, predictions):
+            original_hashtags = word_emb_model.remove_hashtags_not_part_of_the_vocab(tweet.hashtags)
             needed_predicted_hashtags = hashtags[:len(original_hashtags)]
             out.write("Tweet: " + " ".join(tweet) + "\nOriginal hashtags: " + str(
                 original_hashtags) + "\tPredicted hashtags: " +

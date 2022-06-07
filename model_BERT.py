@@ -12,6 +12,7 @@ from transformers import BertTokenizer, TFBertModel
 from keras.layers.core import Dense
 
 import word_embedding_model
+from word_embedding_model import WordEmbeddingModel
 
 SCALE_1 = 2 / 3
 
@@ -54,14 +55,15 @@ def transfer_and_fine_tune(
     batch_size: int = c.BATCH_SIZE,
     transfer_learning_model_weights_file_path: Path = c.TRANSFER_LEARNING_MODEL_WEIGHTS_FILE_PATH,
     fine_tuning_model_weights_file_path: int = c.FINE_TUNING_MODEL_WEIGHTS_FILE_PATH,
-    sequence_len: int = 100):
+    sequence_len: int = 100,
+    bert_model_name: str = 'bert-base-uncased'):
     """
         Create and train multi level perceptron with Keras API and save it.
     """
     print("BERT version")
     print("TRANSFER LEARNING STEP:")
 
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    tokenizer = BertTokenizer.from_pretrained(bert_model_name) 
     train_encodings = tokenizer(sentences_train.tolist(), truncation=True, padding='max_length',
                                 max_length=sequence_len)
     test_encodings = tokenizer(sentences_test.tolist(), truncation=True, padding='max_length', max_length=sequence_len)
@@ -114,7 +116,7 @@ def transfer_and_fine_tune(
         verbose=model_verbosity_level, callbacks=[es, mc])
 
 
-def predict_top_k_hashtags(sentences, k):
+def predict_top_k_hashtags(word_emb_model: WordEmbeddingModel, sentences, k):
     """
         Predict hashtags for input sentence embeddings (embeddings_list)
 
@@ -161,7 +163,7 @@ def predict_top_k_hashtags(sentences, k):
 
     h_list = [np.reshape(h_vect, (len(h_vect),)) for h_vect in h_list]
 
-    emb_model = word_embedding_model.load_Word2Vec_model()
+    emb_model = word_emb_model.w2v_model
     top_n_words = 1000
     result = [word_embedding_model.retain_hashtags(emb_model.wv.similar_by_vector(h_vect, topn=top_n_words))[:k] for h_vect
               in h_list]
