@@ -6,50 +6,40 @@ import dataset_handler as dh
 import evaluation as ev
 import topic_discovery as td
 import model
+from tweet_processor import TweetProcessor
 from word_embedding_model import WordEmbeddingModel
 
 def main():
-    dataset_file_paths = ['datasets/hashtags-en-tweets.jsonl']
-    is_custom_dataset = True
+    dataset_file_path = 'datasets/hashtags-en-tweets.jsonl'
 
     # creating folder for save files
     if not os.path.exists(c.SAVE_FOLDER):
         os.mkdir(c.SAVE_FOLDER)
 
+    tweet_processor = TweetProcessor()
     print("> Preprocessing data for Word2Vec model")
-    tweet_corpus = dh.preprocess_tweets(dataset_file_paths, save_file=c.W2V_INPUT, is_custom_dataset=is_custom_dataset)
-    
+    word_emb_tweets = tweet_processor.preprocess_tweets_for_word_embedding(dataset_file_path)
+
     print("> Training Word2Vec model")
     word_embedding_model = WordEmbeddingModel()
-    word_embedding_model.train(tweet_corpus)
+    word_embedding_model.train(word_emb_tweets)
     print("W2V MODEL TRAINING SUCCEDED")
 
     # Get data for Google Universal Sentence Encoder
     print("> Preprocessing data for sentence embeddings")
-    dh.preprocess_data_for_sentence_embedding(dataset_file_paths, is_custom_dataset=True)
+    sent_emb_tweets = tweet_processor.preprocess_tweets_for_sentence_embedding(dataset_file_path)
 
-    dh.prepare_train_test()
+    train_tweets, test_tweets = dh.split_into_train_test(sent_emb_tweets)
 
     print("> Preparing data for neural network training")
-    tweet_corpus_train, tweet_corpus_test, targets_train, targets_test, hashtags = dh.prepare_model_inputs_and_targets(
-        word_embedding_model)
+    sentences_train, sentences_test, targets_train, targets_test, test_hashtags = dh.prepare_model_inputs_and_targets(
+        train_tweets, test_tweets, word_embedding_model
+    )
 
-
-    # dump(sentences_train, open(c.SAVE_FOLDER + 'sentences_train.pkl', 'wb'))
-    # dump(sentences_test, open(c.SAVE_FOLDER + 'sentences_test.pkl', 'wb'))
-    # dump(targets_train, open(c.SAVE_FOLDER + 'targets_train.pkl', 'wb'))
-    # dump(targets_test, open(c.SAVE_FOLDER + 'targets_test.pkl', 'wb'))
-    # dump(ht_lists, open(c.SAVE_FOLDER + 'ht_lists.pkl', 'wb'))
-
-    # sentences_train = load(open(c.SAVE_FOLDER + 'sentences_train.pkl', 'rb'))
-    # sentences_test = load(open(c.SAVE_FOLDER + 'sentences_test.pkl', 'rb'))
-    # targets_train = load(open(c.SAVE_FOLDER + 'targets_train.pkl', 'rb'))
-    # targets_test = load(open(c.SAVE_FOLDER + 'targets_test.pkl', 'rb'))
-
-    # print("> Training MLP model")
-    # model.transfer_and_fine_tune(sentences_train, sentences_test, targets_train, targets_test)
-    # print("> Loading MLP model and making predictions")
-    # model.predict_hashtags_and_store_results(c.TEST_CORPUS, sentences_test)
+    print("> Training MLP model")
+    model.transfer_and_fine_tune(sentences_train, sentences_test, targets_train, targets_test)
+    print("> Loading MLP model and making predictions")
+    model.predict_hashtags_and_store_results(word_embedding_model, test_tweets, sentences_test)
 
     # # Evaluate model
     # ht_lists = load(open(c.SAVE_FOLDER + 'ht_lists.pkl', 'rb'))
@@ -65,4 +55,9 @@ def main():
     # td.evaluate_topic_discovery(model, c.TEST_CORPUS, c.MAX_EXPANSION_ITERATIONS)
 
 if __name__ == '__main__':
-    main()
+    # main()
+    dataset_file_path = 'datasets/hashtags-en-tweets.jsonl'
+    tweet_processor = TweetProcessor()
+    sent_emb_tweet_corpus = tweet_processor.preprocess_tweets_for_sentence_embedding(dataset_file_path)
+
+    print('done')
