@@ -23,7 +23,7 @@ W2V_SAVE_FILE_NAME = SAVE_FOLDER + "w2v_emb.model"
 # Word2Vec mincount parameter (suggested value for larger datasets: 5)
 W2V_MINCOUNT = 5
 # hashtag mincount in corpus (suggested value for large datasets: 10 or more)
-MINCOUNT = 10
+HASHTAG_MINCOUNT = 10
 
 LATENT_SPACE_DIM = 150
 WINDOW_SIZE = 5
