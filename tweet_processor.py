@@ -15,9 +15,9 @@ import constants as C
 
 class TweetProcessor:
     URL_REGEX = r"@\w*|https?:?\/?\/?[\w.\/]*|https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&\/=]*)"
-    USER_NAMES_REGEX = re.compile(r'@\S+')
+    USER_NAMES_REGEX = re.compile(r' ?@\S+')
     ACRONYM_REGEX = re.compile(r'[A-Z]{2,5}$')
-    HASHTAG_REGEX = re.compile(r'#\S+')
+    HASHTAG_REGEX = re.compile(r' ?#\S+')
     WHITE_LIST = re.compile(r'[^\w+_ #]+')
     WORDS_TO_REMOVE = ['rt', 'ht', 'htt', 'https', 'http', 'https t']
 
