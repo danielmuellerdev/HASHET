@@ -25,16 +25,16 @@ class TweetProcessor:
     def _read_tweets_from_file(file_path: Path, filter_out_retweets: bool = True) -> List[Tweet]:
         tweets = []
         with open(file_path, encoding='utf-8') as file:
-            tweets = [json.loads(line.strip()) for line in file]
+            tweet_dicts = [json.loads(line.strip()) for line in file]
 
-        for tweet in tweets:
-            is_retweet = tweet['quoted_tweet_id'] is not None
+        for tweet_dict in tweet_dicts:
+            is_retweet = tweet_dict['quoted_tweet_id'] is not None
                
             # skip tweet without text and retweets (no benefits for the embedding phase)
-            if len(tweet['text']) == 0 or (filter_out_retweets and is_retweet):
+            if len(tweet_dict['text']) == 0 or (filter_out_retweets and is_retweet):
                 continue
 
-            tweets.append(Tweet(original_tweet=tweet, text=tweet['text']))
+            tweets.append(Tweet(original_tweet=tweet_dict, text=tweet_dict['text']))
 
         return tweets
 
