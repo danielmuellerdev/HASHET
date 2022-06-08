@@ -66,7 +66,7 @@ class TweetProcessor:
             else:
                 lowercased_token = token.lower()
             lowercased_tokens.append(lowercased_token)
-        
+
         return ' '.join(lowercased_tokens)
 
     @staticmethod
@@ -166,7 +166,6 @@ class TweetProcessor:
             tweet.text = self._remove_urls(tweet.text)
             tweet.text = self._remove_hashtags(tweet.text)
             tweet.text = self._remove_user_names(tweet.text)
-            tweet.text = self._handle_accented_characters(tweet.text)
             # have to lowercase the tweet since the BERT model is uncased
             tweet.text = self._to_lowercase(tweet.text)
 
