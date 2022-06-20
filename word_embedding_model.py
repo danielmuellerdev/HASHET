@@ -26,11 +26,11 @@ class WordEmbeddingModel:
                             min_alpha=0.001, negative=10,
                             workers=cores - 1)
 
-    def train(self, tweet_corpus: List[Tweet]):
+    def train(self, tweets: List[Tweet]):
         """ Create and stores Word2Vec model """
-        tweet_texts = [tweet.text for tweet in tweet_corpus]
-        self.w2v_model.build_vocab(tweet_texts, progress_per=10)
-        self.w2v_model.train(tweet_texts, total_examples=self.w2v_model.corpus_count, epochs=50, report_delay=1)
+        sentences = [tweet.tokens for tweet in tweets]
+        self.w2v_model.build_vocab(sentences)
+        self.w2v_model.train(sentences, total_examples=self.w2v_model.corpus_count, epochs=50, report_delay=1)
         self.w2v_model.save(self.save_file_path)
     
     def load(self):
