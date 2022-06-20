@@ -38,7 +38,7 @@ def prepare_model_inputs_and_targets(
 
     for tweets, is_test in [(train_tweets, False), (test_tweets, True)]:
         for tweet in tweets:
-            hashtags = word_emb_model.remove_hashtags_not_part_of_the_vocab(hashtags)
+            hashtags = word_emb_model.remove_hashtags_not_part_of_the_vocab(tweet.hashtags)
             target_emb = word_emb_model.generate_target(hashtags)
 
             if target_emb is not None:
