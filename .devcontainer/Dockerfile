@@ -20,6 +20,8 @@ RUN pip install "numpy<1.22.0"
 RUN pip install scikit_learn==0.24.1
 RUN pip install tensorflow -f https://tf.kmtea.eu/whl/stable.html
 RUN pip install unidecode
+RUN pip install torch
+RUN pip install pytorch-lightning
 
 RUN python -m spacy download en_core_web_lg
 
