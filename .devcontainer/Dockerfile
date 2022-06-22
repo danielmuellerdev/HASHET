@@ -8,14 +8,11 @@ FROM mcr.microsoft.com/vscode/devcontainers/python:0-${VARIANT}
 ARG NODE_VERSION="none"
 RUN if [ "${NODE_VERSION}" != "none" ]; then su vscode -c "umask 0002 && . /usr/local/share/nvm/nvm.sh && nvm install ${NODE_VERSION} 2>&1"; fi
 
-RUN pip install pandas
 RUN pip install gensim==3.8.3
-RUN pip install seaborn==0.10.0
-RUN pip install transformers==4.2.2
+RUN pip install transformers
 RUN pip install spacy
 RUN pip install tensorflow_hub==0.11.0
 RUN pip install matplotlib==3.1.3
-RUN pip install Keras==2.4.3
 RUN pip install "numpy<1.22.0"
 RUN pip install scikit_learn==0.24.1
 RUN pip install tensorflow -f https://tf.kmtea.eu/whl/stable.html
