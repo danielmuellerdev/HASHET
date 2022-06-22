@@ -13,8 +13,6 @@ from tweet import Tweet
 
 
 class WordEmbeddingModel:
-    w2v_model: Word2Vec
-
     def __init__(self, latent_space_dim: int = c.LATENT_SPACE_DIM, window_size: int = c.WINDOW_SIZE, save_file_path: Path = c.W2V_SAVE_FILE_NAME, min_count: int = 5):
         self.latent_space_dim = latent_space_dim
         self.window_size = window_size
@@ -22,24 +20,24 @@ class WordEmbeddingModel:
         self.min_count = min_count
 
         cores = multiprocessing.cpu_count()
-        self.w2v_model = Word2Vec(min_count=self.min_count, window=self.window_size, size=self.latent_space_dim, sample=1e-5, alpha=0.01,
+        self._w2v_model = Word2Vec(min_count=self.min_count, window=self.window_size, size=self.latent_space_dim, sample=1e-5, alpha=0.01,
                             min_alpha=0.001, negative=10,
                             workers=cores - 1)
 
     def train(self, tweets: List[Tweet]):
         """ Create and stores Word2Vec model """
         sentences = [tweet.tokens for tweet in tweets]
-        self.w2v_model.build_vocab(sentences)
-        self.w2v_model.train(sentences, total_examples=self.w2v_model.corpus_count, epochs=50, report_delay=1)
-        self.w2v_model.save(self.save_file_path)
+        self._w2v_model.build_vocab(sentences)
+        self._w2v_model.train(sentences, total_examples=self._w2v_model.corpus_count, epochs=50, report_delay=1)
+        self._w2v_model.save(self.save_file_path)
     
     def load(self):
-        self.w2v_model = Word2Vec.load(c.W2V_SAVE_FILE_NAME)
+        self._w2v_model = Word2Vec.load(c.W2V_SAVE_FILE_NAME)
 
-    def remove_hashtags_not_part_of_the_vocab(self, hashtags: List[str]) -> List[str]:
-        remaining_hashtags = [hashtag for hashtag in hashtags if hashtag in self.w2v_model.wv.vocab]
+    def remove_hashtags_not_part_of_the_vocab(self, hashtags: List[str], verbose: bool = False) -> List[str]:
+        remaining_hashtags = [hashtag for hashtag in hashtags if hashtag in self._w2v_model.wv.vocab]
 
-        if hashtags != remaining_hashtags:
+        if verbose and hashtags != remaining_hashtags:
             print(
                 'some hashtags were filtered out since they are not contained in the Word2Vec-Vocab',
                 f'tweet-hashtags: {hashtags} | hashtags after filtering: {remaining_hashtags}'
@@ -48,8 +46,11 @@ class WordEmbeddingModel:
         return remaining_hashtags
 
     def generate_target(self, hashtags: List[str]) -> Union[np.array, None]:
-        hashtag_embeddings = [self.w2v_model.wv[hashtag] for hashtag in hashtags]
+        hashtag_embeddings = [self._w2v_model.wv[hashtag] for hashtag in hashtags]
         return np.mean(hashtag_embeddings) if len(hashtag_embeddings) > 0 else None
+
+    def get_embedding(self, word: str):
+        return self._w2v_model.wv[word] if word in self._w2v_model.wv.vocab else None
 
 def retain_hashtags(top_emb): # TODO rewrite?
     top_emb_hts = []
