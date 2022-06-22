@@ -24,6 +24,10 @@ class Tweet:
     def tokens(self) -> List[str]:
         return self.text.split()
 
+    @property
+    def id(self) -> int:
+        return self.original_tweet['id']
+
     def __str__(self):
         return (
             f'original text: {self.original_tweet["text"]}\n'
