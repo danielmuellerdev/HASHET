@@ -3,12 +3,11 @@ import torch
 import pytorch_lightning as pl
 import tensorflow as tf
 import torch.nn as nn
+from torch import Tensor
 
-pl.seed_everything(0)
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class Hashtag2SentMapper(pl.LightningModule):
-    """Maps from hashtag space to sentence space. """
+    """ Maps from hashtag space to sentence space. """
     
     def __init__(
         self, in_features: int, out_features: int,
@@ -29,25 +28,40 @@ class Hashtag2SentMapper(pl.LightningModule):
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.learning_rate)
 
-    def forward(self, targets):
-        predicted_sent_emb = self._model(targets)
-        return predicted_sent_emb
-    
-    def training_step(self, targets, sent_emb):
-        predicted_sent_emb = self(targets)
-        loss = self._cosine_distance_loss(sent_emb, predicted_sent_emb)
+    def forward(self, x):
+        y_hat = self._model(x)
+        return y_hat
+
+    def _calc_cosine_distance_loss(self, y: Tensor, y_hat: Tensor) -> Tensor:
+        return self._cosine_distance_loss(
+            y, 
+            y_hat, 
+            target=torch.tensor([1] * y.shape[0])
+        )
+
+    def training_step(self, batch, _):
+        y_hat = self(batch['x'])
+        loss = self._calc_cosine_distance_loss(batch['y'], y_hat)
 
         self.log('train_loss', loss)
-        self.log('cosine_distance', self._cosine_distance(sent_emb, predicted_sent_emb))
 
-    def test_step(self, targets, sent_emb):
-        predicted_sent_emb = self(targets)
-        loss = self._cosine_distance_loss(sent_emb, predicted_sent_emb)
+        return loss
 
+    def validation_step(self, batch, _):
+        y_hat = self(batch['x'])
+        loss = self._calc_cosine_distance_loss(batch['y'], y_hat)
+
+        self.log('val_loss', loss)
+        self.log('val_cosine_distance', self._cosine_distance(batch['y'], y_hat))
+
+    def test_step(self, batch, _):
+        y_hat = self(batch['x'])
+        loss = self._calc_cosine_distance_loss(batch['y'], y_hat)
+        
         self.log('test_loss', loss)
-        self.log('cosine_distance', self._cosine_distance(sent_emb, predicted_sent_emb))
+        self.log('test_cosine_distance', self._cosine_distance(batch['y'], y_hat))
 
     @staticmethod
     def _cosine_distance(y_true, y_pred):
-        return tf.compat.v1.losses.cosine_distance(tf.nn.l2_normalize(y_pred, 0), tf.nn.l2_normalize(y_true, 0), dim=0)
+        return tf.compat.v1.losses.cosine_distance(tf.nn.l2_normalize(y_pred, 0), tf.nn.l2_normalize(y_true, 0), dim=0).numpy()
     
