@@ -3,3 +3,4 @@ datasets/*
 __pycache__/*
 input/*
 .DS_STORE
+lightning_logs/*
