@@ -159,7 +159,7 @@ class TweetProcessor:
             tweets[i].text = cleaned_tweet_text
 
             if i % (spacy_batch_size * 20) == 0:
-                print(f'Removing stopwords and lemmatizing with spacy: [{i} / {len(tweets)}]')
+                print(f'Removing stopwords and lemmatizing with spacy: [{i:6d} / {len(tweets)}]')
 
     @staticmethod
     def _remove_tweets_without_hashtags(tweets: List[Tweet]) -> List[Tweet]:
