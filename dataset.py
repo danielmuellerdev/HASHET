@@ -1,12 +1,11 @@
-from cgi import test
 from collections import defaultdict
 from copyreg import pickle
-from enum import unique
 from typing import List, Tuple
 from pathlib import Path
 import pickle
 import random
-from pyparsing import Word
+import time
+import datetime
 
 import pytorch_lightning as pl
 import torch
@@ -42,14 +41,29 @@ class CachedDataset(torch.utils.data.Dataset):
         with __getitem__(). Since this occurs for most of the samples only when the training has started,
         it makes sense to cache the data in the dataset for speeding up the training.
         """
+        print(f'Cashing Dataset: {file_path} ...')
+        start = time.time()
         for i in range(len(self.hashtags)):
             self[i] # by calling __getitem__() the results will be cached
 
-            if i % report_frequency == 0:
-                print(f'Cashing Dataset: {file_path} ... [{i} / {len(self.hashtags)}]')
+            if i > 0 and i % report_frequency == 0:
+                time_run = time.time() - start
+                percent_done = i / len(self.hashtags) * 100
+                percent_left = 100 - percent_done
+                remaining_time_in_s = time_run / percent_done * percent_left
+                h, m, s = str(datetime.timedelta(seconds=remaining_time_in_s)).split(':')
+                remaining_time_str = f'{h}h:{m}m:{int(float(s)):02d}s'
+                estimated_finish_time = datetime.datetime.now() + datetime.timedelta(seconds=remaining_time_in_s)
+
+                print(
+                    f'Cashing Dataset: {file_path} ... [{i:4d} / {len(self.hashtags):4d}]'
+                    f' [Remaining: {remaining_time_str}] [ETA: {estimated_finish_time}]'
+                )
 
         with open(file_path, 'wb') as file:
             pickle.dump(self._cache, file)
+        
+        print(f'Cashing Dataset: {file_path} finished')
 
     @staticmethod
     def load_from_file(file_path: Path) -> 'CachedDataset':
@@ -103,9 +117,9 @@ class DataModule(pl.LightningDataModule):
     @staticmethod
     def _get_unique_hashtags(tweets: List[Tweet], word_emb_model: WordEmbeddingModel) -> List[str]:
         unique_hashtags = list(set(hashtag for tweet in tweets for hashtag in tweet.hashtags))
-        unique_hashtags = word_emb_model.remove_hashtags_not_part_of_the_vocab(unique_hashtags)
+        unique_hashtags_in_w2v_vocab = word_emb_model.remove_hashtags_not_part_of_the_vocab(unique_hashtags)
        
-        return unique_hashtags
+        return unique_hashtags_in_w2v_vocab
 
     @staticmethod
     def _split_into_train_val_test(hashtags: List[str], train_val_test_split: Tuple[int]) -> Tuple[List[str], List[str], List[str]]:
@@ -125,9 +139,9 @@ class DataModule(pl.LightningDataModule):
     
     def setup(self, stage: str = None, restore_from_file: bool = False):
         if restore_from_file:
-            self.train_dataset = CachedDataset.load_from_file('save_files/train_dataset.pickle')
-            self.val_dataset = CachedDataset.load_from_file('save_files/val_dataset.pickle')
-            self.test_dataset = CachedDataset.load_from_file('save_files/test_dataset.pickle')
+            self.train_dataset = CachedDataset.load_from_file('save_files/train_dataset.pkl')
+            self.val_dataset = CachedDataset.load_from_file('save_files/val_dataset.pkl')
+            self.test_dataset = CachedDataset.load_from_file('save_files/test_dataset.pkl')
         else:
             self.train_dataset = CachedDataset(
                 self.train_hashtags, self.tweets, self.word_emb_model, self.sent_emb_model
@@ -139,9 +153,9 @@ class DataModule(pl.LightningDataModule):
                 self.test_hashtags, self.tweets, self.word_emb_model, self.sent_emb_model
             )
 
-            self.train_dataset.cache_all_and_store('save_files/train_dataset.pickle')
-            self.val_dataset.cache_all_and_store('save_files/val_dataset.pickle')
-            self.test_dataset.cache_all_and_store('save_files/test_dataset.pickle')
+            self.train_dataset.cache_all_and_store('save_files/train_dataset.pkl')
+            self.val_dataset.cache_all_and_store('save_files/val_dataset.pkl')
+            self.test_dataset.cache_all_and_store('save_files/test_dataset.pkl')
 
     @property
     def in_features(self) -> int:
