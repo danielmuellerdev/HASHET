@@ -25,14 +25,9 @@ class WordEmbeddingModel:
                             workers=cores - 1)
 
     def train(self, tweets: List[Tweet]):
-        """ Create and stores Word2Vec model """
         sentences = [tweet.tokens for tweet in tweets]
         self._w2v_model.build_vocab(sentences)
         self._w2v_model.train(sentences, total_examples=self._w2v_model.corpus_count, epochs=50, report_delay=1)
-        self._w2v_model.save(self.save_file_path)
-    
-    def load(self):
-        self._w2v_model = Word2Vec.load(c.W2V_SAVE_FILE_NAME)
 
     def remove_hashtags_not_part_of_the_vocab(self, hashtags: List[str], verbose: bool = False) -> List[str]:
         remaining_hashtags = [hashtag for hashtag in hashtags if hashtag in self._w2v_model.wv.vocab]
