@@ -1,6 +1,6 @@
 from collections import defaultdict
 from copyreg import pickle
-from typing import List, Tuple
+from typing import List, Tuple, Iterable, Callable
 from pathlib import Path
 import pickle
 import random
@@ -10,6 +10,7 @@ import datetime
 import pytorch_lightning as pl
 import torch
 from torch.utils.data import DataLoader
+from torch import Tensor
 
 from tweet import Tweet
 from word_embedding_model import WordEmbeddingModel
@@ -19,11 +20,12 @@ from sentence_embedding_model import SentenceEmbeddingModel
 class CachedDataset(torch.utils.data.Dataset):
     def __init__(
         self, hashtags: List[str], tweets: List[Tweet], word_emb_model: WordEmbeddingModel,
-        sent_emb_model: SentenceEmbeddingModel
+        sent_emb_model: SentenceEmbeddingModel, num_hashtags_per_sent_emb_limit: int = None
     ):
         self.hashtags = hashtags
         self.word_emb_model = word_emb_model
         self.sent_emb_model = sent_emb_model
+        self.num_hashtags_per_sent_emb_limit = num_hashtags_per_sent_emb_limit
 
         self._hashtag_to_tweets = defaultdict(list)
         for tweet in tweets:
@@ -73,20 +75,46 @@ class CachedDataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.hashtags)
 
+    @staticmethod
+    def memory_efficient_mean(items: Iterable, func: Callable, dim: int) -> Tensor:
+        """
+        Won't overflow and shouldn't underflow. Applies the given function to each item one by one
+        and only holds one item at a time in memory after applying the function.
+        """
+        result = torch.zeros(dim)
+        for item in items:
+            result += (1 / len(items)) * func(item)
+
+        return result
+
+    def _generate_hashtag_embedding(self, hashtag: str) -> Tensor:
+        return torch.tensor(self.word_emb_model.get_embedding(hashtag))
+
+    def _generate_averaged_sentence_embedding(self, hashtag: str) -> Tensor:
+        tweets_containing_hashtag = self._get_tweets_by_hashtag(hashtag)
+        
+        if self.num_hashtags_per_sent_emb_limit is not None:
+            random.shuffle(tweets_containing_hashtag)
+            tweets_containing_hashtag = tweets_containing_hashtag[:self.num_hashtags_per_sent_emb_limit]
+        
+        sent_emb = self.memory_efficient_mean(
+            tweets_containing_hashtag,
+            lambda tweet: self.sent_emb_model._generate_embedding(tweet.text),
+            dim=self.sent_emb_model.OUTPUT_DIM
+        )
+
+        return sent_emb
+
     def __getitem__(self, idx):
         if idx in self._cache:
             return self._cache[idx]
 
         hashtag = self.hashtags[idx]
 
-        hashtag_emb = torch.tensor(self.word_emb_model.get_embedding(hashtag))
-        tweets_containing_hashtag = self._get_tweets_by_hashtag(hashtag)
-        sent_embs = [self.sent_emb_model._generate_embedding(tweet.text) for tweet in tweets_containing_hashtag]
-        # have to wrap the mean in another tensor, otherwise the following exception occurs when training
-        # "RuntimeError: Trying to backward through the graph a second time"
-        avg_sent_emb = torch.tensor(torch.mean(torch.stack(sent_embs), dim=0))
-        
-        data = {'x': hashtag_emb, 'y': avg_sent_emb}
+        data = {
+            'x': self._generate_hashtag_embedding(hashtag),
+            'y': self._generate_averaged_sentence_embedding(hashtag)
+        }
 
         self._cache[idx] = data
 
@@ -96,7 +124,8 @@ class DataModule(pl.LightningDataModule):
     def __init__(
         self, tweets: List[Tweet], word_emb_model: WordEmbeddingModel, 
         sent_emb_model: SentenceEmbeddingModel,
-        batch_size: int = 2, train_val_test_split: Tuple[int] = (0.7, 0.1, 0.2)
+        batch_size: int = 2, train_val_test_split: Tuple[int] = (0.7, 0.1, 0.2),
+        num_hashtags_per_sent_emb_limit: int = None
     ):
         # super.__init__()
         self.prepare_data_per_node = False # TODO brauche ich das immer noch?
@@ -105,6 +134,7 @@ class DataModule(pl.LightningDataModule):
         self.word_emb_model = word_emb_model
         self.sent_emb_model = sent_emb_model
         self.batch_size = batch_size
+        self.num_hashtags_per_sent_emb_limit = num_hashtags_per_sent_emb_limit
 
         unique_hashtags = self._get_unique_hashtags(tweets, word_emb_model)
         self.train_hashtags, self.val_hashtags, self.test_hashtags = \
@@ -144,13 +174,16 @@ class DataModule(pl.LightningDataModule):
             self.test_dataset = CachedDataset.load_from_file('save_files/test_dataset.pkl')
         else:
             self.train_dataset = CachedDataset(
-                self.train_hashtags, self.tweets, self.word_emb_model, self.sent_emb_model
+                self.train_hashtags, self.tweets, self.word_emb_model, self.sent_emb_model,
+                self.num_hashtags_per_sent_emb_limit
             )
             self.val_dataset = CachedDataset(
-                self.val_hashtags, self.tweets, self.word_emb_model, self.sent_emb_model
+                self.val_hashtags, self.tweets, self.word_emb_model, self.sent_emb_model,
+                self.num_hashtags_per_sent_emb_limit
             )
             self.test_dataset = CachedDataset(
-                self.test_hashtags, self.tweets, self.word_emb_model, self.sent_emb_model
+                self.test_hashtags, self.tweets, self.word_emb_model, self.sent_emb_model,
+                self.num_hashtags_per_sent_emb_limit
             )
 
             self.train_dataset.cache_all_and_store('save_files/train_dataset.pkl')
