@@ -7,6 +7,8 @@ from pathlib import Path
 import gensim
 import numpy as np
 from gensim.models import Word2Vec
+from torch import Tensor
+import torch
 
 import constants as c
 from tweet import Tweet
@@ -44,8 +46,8 @@ class WordEmbeddingModel:
         hashtag_embeddings = [self._w2v_model.wv[hashtag] for hashtag in hashtags]
         return np.mean(hashtag_embeddings) if len(hashtag_embeddings) > 0 else None
 
-    def get_embedding(self, word: str):
-        return self._w2v_model.wv[word] if word in self._w2v_model.wv.vocab else None
+    def get_embedding(self, word: str) -> Tensor:
+        return torch.tensor(self._w2v_model.wv[word]) if word in self._w2v_model.wv.vocab else None
 
 def retain_hashtags(top_emb): # TODO rewrite?
     top_emb_hts = []

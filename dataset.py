@@ -93,7 +93,7 @@ class CachedDataset(torch.utils.data.Dataset):
         return result
 
     def _generate_hashtag_embedding(self, hashtag: str) -> Tensor:
-        return torch.tensor(self.word_emb_model.get_embedding(hashtag))
+        return self.word_emb_model.get_embedding(hashtag)
 
     def _generate_averaged_sentence_embedding(self, hashtag: str) -> Tensor:
         tweets_containing_hashtag = self._get_tweets_by_hashtag(hashtag)
