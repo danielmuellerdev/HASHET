@@ -70,13 +70,18 @@ class CachedDataset(torch.utils.data.Dataset):
     @staticmethod
     def load_from_file(file_path: Path) -> 'CachedDataset':
         with open(file_path, 'rb') as file:
-            return pickle.load(file)
+            cache = pickle.load(file)
+        
+        cached_dataset = CachedDataset([], [], None, None, None)
+        cached_dataset._cache = cache
+
+        return cached_dataset
 
     def __len__(self):
-        return len(self.hashtags)
+        return len(self.hashtags) if len(self._cache) == 0 else len(self._cache)
 
     @staticmethod
-    def memory_efficient_mean(items: Iterable, func: Callable, dim: int) -> Tensor:
+    def _memory_efficient_mean(items: Iterable, func: Callable, dim: int) -> Tensor:
         """
         Won't overflow and shouldn't underflow. Applies the given function to each item one by one
         and only holds one item at a time in memory after applying the function.
@@ -97,7 +102,7 @@ class CachedDataset(torch.utils.data.Dataset):
             random.shuffle(tweets_containing_hashtag)
             tweets_containing_hashtag = tweets_containing_hashtag[:self.num_hashtags_per_sent_emb_limit]
         
-        sent_emb = self.memory_efficient_mean(
+        sent_emb = self._memory_efficient_mean(
             tweets_containing_hashtag,
             lambda tweet: self.sent_emb_model._generate_embedding(tweet.text),
             dim=self.sent_emb_model.OUTPUT_DIM
@@ -120,29 +125,44 @@ class CachedDataset(torch.utils.data.Dataset):
 
         return data
 
+
 class DataModule(pl.LightningDataModule):
     def __init__(
-        self, tweets: List[Tweet], word_emb_model: WordEmbeddingModel, 
+        self, tweets: List[Tweet], word_emb_model: WordEmbeddingModel,
         sent_emb_model: SentenceEmbeddingModel,
         batch_size: int = 2, train_val_test_split: Tuple[int] = (0.7, 0.1, 0.2),
-        num_hashtags_per_sent_emb_limit: int = None
+        num_hashtags_per_sent_emb_limit: int = None,
+        num_workers: int = 1
     ):
-        # super.__init__()
+        super().__init__()
         self.prepare_data_per_node = False # TODO brauche ich das immer noch?
 
-        self.tweets = tweets
-        self.word_emb_model = word_emb_model
-        self.sent_emb_model = sent_emb_model
+        self._tweets = tweets
+        self._word_emb_model = word_emb_model
+        self._sent_emb_model = sent_emb_model
+        self.train_val_test_split = train_val_test_split
         self.batch_size = batch_size
         self.num_hashtags_per_sent_emb_limit = num_hashtags_per_sent_emb_limit
+        self.num_workers = num_workers
 
-        unique_hashtags = self._get_unique_hashtags(tweets, word_emb_model)
-        self.train_hashtags, self.val_hashtags, self.test_hashtags = \
-            self._split_into_train_val_test(unique_hashtags, train_val_test_split)
-
+        self.is_restored_from_file = False
         self.train_dataset = None
         self.val_dataset = None
         self.test_dataset = None
+
+    @staticmethod
+    def restore_from_file() -> 'DataModule':
+        train_dataset = CachedDataset.load_from_file('save_files/train_dataset.pkl')
+        val_dataset = CachedDataset.load_from_file('save_files/val_dataset.pkl')
+        test_dataset = CachedDataset.load_from_file('save_files/test_dataset.pkl')
+
+        data_module = DataModule(None, None, None)
+        data_module.train_dataset = train_dataset
+        data_module.val_dataset = val_dataset
+        data_module.test_dataset = test_dataset
+        data_module.is_restored_from_file = True
+
+        return data_module
 
     @staticmethod
     def _get_unique_hashtags(tweets: List[Tweet], word_emb_model: WordEmbeddingModel) -> List[str]:
@@ -167,28 +187,30 @@ class DataModule(pl.LightningDataModule):
     def prepare_data(self):
         pass
     
-    def setup(self, stage: str = None, restore_from_file: bool = False):
-        if restore_from_file:
-            self.train_dataset = CachedDataset.load_from_file('save_files/train_dataset.pkl')
-            self.val_dataset = CachedDataset.load_from_file('save_files/val_dataset.pkl')
-            self.test_dataset = CachedDataset.load_from_file('save_files/test_dataset.pkl')
-        else:
-            self.train_dataset = CachedDataset(
-                self.train_hashtags, self.tweets, self.word_emb_model, self.sent_emb_model,
-                self.num_hashtags_per_sent_emb_limit
-            )
-            self.val_dataset = CachedDataset(
-                self.val_hashtags, self.tweets, self.word_emb_model, self.sent_emb_model,
-                self.num_hashtags_per_sent_emb_limit
-            )
-            self.test_dataset = CachedDataset(
-                self.test_hashtags, self.tweets, self.word_emb_model, self.sent_emb_model,
-                self.num_hashtags_per_sent_emb_limit
-            )
+    def setup(self, stage: str = None):
+        if self.is_restored_from_file:
+            return
 
-            self.train_dataset.cache_all_and_store('save_files/train_dataset.pkl')
-            self.val_dataset.cache_all_and_store('save_files/val_dataset.pkl')
-            self.test_dataset.cache_all_and_store('save_files/test_dataset.pkl')
+        unique_hashtags = self._get_unique_hashtags(self._tweets, self._word_emb_model)
+        train_hashtags, val_hashtags, test_hashtags = \
+            self._split_into_train_val_test(unique_hashtags, self.train_val_test_split)
+
+        self.train_dataset = CachedDataset(
+            train_hashtags, self._tweets, self._word_emb_model, self._sent_emb_model,
+            self.num_hashtags_per_sent_emb_limit
+        )
+        self.val_dataset = CachedDataset(
+            val_hashtags, self._tweets, self._word_emb_model, self._sent_emb_model,
+            self.num_hashtags_per_sent_emb_limit
+        )
+        self.test_dataset = CachedDataset(
+            test_hashtags, self._tweets, self._word_emb_model, self._sent_emb_model,
+            self.num_hashtags_per_sent_emb_limit
+        )
+
+        self.train_dataset.cache_all_and_store('save_files/train_dataset.pkl')
+        self.val_dataset.cache_all_and_store('save_files/val_dataset.pkl')
+        self.test_dataset.cache_all_and_store('save_files/test_dataset.pkl')
 
     @property
     def in_features(self) -> int:
