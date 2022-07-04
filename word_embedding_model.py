@@ -42,6 +42,10 @@ class WordEmbeddingModel:
 
         return remaining_hashtags
 
+    @property
+    def vocab(self):
+        return self._w2v_model.wv.vocab
+
     def generate_target(self, hashtags: List[str]) -> Union[np.array, None]:
         hashtag_embeddings = [self._w2v_model.wv[hashtag] for hashtag in hashtags]
         return np.mean(hashtag_embeddings) if len(hashtag_embeddings) > 0 else None
