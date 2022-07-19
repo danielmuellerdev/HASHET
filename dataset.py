@@ -1,5 +1,4 @@
 from collections import defaultdict
-from copyreg import pickle
 from typing import List, Tuple, Iterable, Callable
 from pathlib import Path
 import pickle
@@ -27,7 +26,7 @@ class CachedDataset(torch.utils.data.Dataset):
         self.sent_emb_model = sent_emb_model
         self.num_hashtags_per_sent_emb_limit = num_hashtags_per_sent_emb_limit
 
-        self._hashtag_to_tweets = defaultdict(list)
+        self._hashtag_to_tweets = defaultdict(list) # TODO: als TweetManager Klasse?
         for tweet in tweets:
             for hashtag in tweet.hashtags:
                 self._hashtag_to_tweets[hashtag].append(tweet)
@@ -102,13 +101,13 @@ class CachedDataset(torch.utils.data.Dataset):
             random.shuffle(tweets_containing_hashtag)
             tweets_containing_hashtag = tweets_containing_hashtag[:self.num_hashtags_per_sent_emb_limit]
         
-        sent_emb = self._memory_efficient_mean(
+        avg_sent_emb = self._memory_efficient_mean(
             tweets_containing_hashtag,
             lambda tweet: self.sent_emb_model._generate_embedding(tweet.text),
             dim=self.sent_emb_model.OUTPUT_DIM
         )
 
-        return sent_emb
+        return avg_sent_emb
 
     def __getitem__(self, idx):
         if idx in self._cache:
