@@ -4,3 +4,13 @@ __pycache__/*
 input/*
 .DS_STORE
 lightning_logs/*
+save_files copy/all_hashtags_transformed.png
+save_files copy/all_hashtags_word2vec.png
+save_files copy/best_model.ckpt
+save_files copy/selected_hashtags_with_topics_transformed.png
+save_files copy/selected_hashtags_with_topics_word2vec.png
+save_files copy/test_dataset.pkl
+save_files copy/train_dataset.pkl
+save_files copy/val_dataset.pkl
+save_files copy/w2v_emb.model
+save_files copy/word_emb_model.pkl
