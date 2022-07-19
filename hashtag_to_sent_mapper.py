@@ -24,6 +24,7 @@ class Hashtag2SentMapper(pl.LightningModule):
         )
 
         self._cosine_distance_loss = nn.CosineEmbeddingLoss()
+        self._cosine_similarity = nn.CosineSimilarity()
     
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.learning_rate)
@@ -44,6 +45,7 @@ class Hashtag2SentMapper(pl.LightningModule):
         loss = self._calc_cosine_distance_loss(batch['y'], y_hat)
 
         self.log('train_loss', loss)
+        self.log('train_cosine_similarity', self._cosine_similarity(batch['y'], y_hat).mean())
 
         return loss
 
@@ -53,6 +55,7 @@ class Hashtag2SentMapper(pl.LightningModule):
 
         self.log('val_loss', loss)
         self.log('val_cosine_distance', self._cosine_distance(batch['y'], y_hat))
+        self.log('val_cosine_similarity', self._cosine_similarity(batch['y'], y_hat).mean())
 
     def test_step(self, batch, _):
         y_hat = self(batch['x'])
