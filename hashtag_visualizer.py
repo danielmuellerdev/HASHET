@@ -1,21 +1,24 @@
 from typing import List, Tuple, Dict
 from pathlib import Path
 from collections import defaultdict
+import random
 
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 import torch
 from torch import Tensor
 from matplotlib.axes import Axes
+from sentence_embedding_model import SentenceEmbeddingModel
 
 from word_embedding_model import WordEmbeddingModel
 from hashtag_to_sent_mapper import Hashtag2SentMapper
 from tweet import Tweet
+from dataset import CachedDataset
 
 
 class HashtagVisualizer:
     COLORS = [
-        'tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 
+        'tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple',
         'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive', 'tab:cyan'
     ]
 
@@ -23,6 +26,7 @@ class HashtagVisualizer:
         self, sent_emb_tweets: List[Tweet], word_emb_model: WordEmbeddingModel, 
         hashtag_to_sent_mapper: Hashtag2SentMapper
     ):
+        self.sent_emb_tweets = sent_emb_tweets
         self._word_emb_model = word_emb_model
         self._hashtag_to_sent_mapper = hashtag_to_sent_mapper
         
@@ -105,7 +109,7 @@ class HashtagVisualizer:
     def plot_hashtags_with_topics(
         self, topics_file_path: Path, after_transformation: bool = False,
         num_hashtags_to_label_per_topic: int = 3
-     ):
+     ) -> None:
         hashtags, topics = self._read_topics_file(topics_file_path, self._word_emb_model)
 
         hashtag_embs = self._get_hashtag_embeddings(
@@ -141,3 +145,48 @@ class HashtagVisualizer:
             + 'selected_hashtags_with_topics_' + ('transformed' if after_transformation else 'word2vec') + '.png'
         )
         plt.show()
+
+    def plot_a_hashtag(self, hashtag: str, sent_emb_model: SentenceEmbeddingModel) -> None:
+        hashtag_emb = self._get_hashtag_embeddings(
+            [hashtag], self._word_emb_model, self._hashtag_to_sent_mapper
+        )[0]
+
+        transformed_hashtag_emb = self._get_hashtag_embeddings(
+            [hashtag], self._word_emb_model, self._hashtag_to_sent_mapper, after_transformation=True
+        )[0]
+        
+        hashtag_to_tweets = defaultdict(list) # TODO: als TweetManager Klasse?
+        for tweet in self.sent_emb_tweets:
+            for tweet_hashtag in tweet.hashtags:
+                hashtag_to_tweets[tweet_hashtag].append(tweet)
+
+        tweets_containing_hashtag = hashtag_to_tweets[hashtag] 
+
+        sent_embs = [sent_emb_model._generate_embedding(tweet.text) for tweet in tweets_containing_hashtag]
+
+        avg_sent_emb = CachedDataset._memory_efficient_mean(
+            tweets_containing_hashtag,
+            lambda tweet: sent_emb_model._generate_embedding(tweet.text),
+            dim=sent_emb_model.OUTPUT_DIM
+        )
+
+        stacked_embs = torch.stack([avg_sent_emb] + [transformed_hashtag_emb] + sent_embs)
+        two_dim_embs = self._reduce_to_two_dimensions(stacked_embs, self._pca)
+
+        x, y = two_dim_embs[:, 0], two_dim_embs[:, 1]
+
+        fig, ax = plt.subplots()
+        fig.set_size_inches(20, 10)
+
+        ax.scatter(x[0], y[0], c=HashtagVisualizer.COLORS[1], label='centroid')
+        ax.scatter(x[1], y[1], c=HashtagVisualizer.COLORS[3], label='predicted centroid')
+        ax.scatter(x[2:], y[2:], c=HashtagVisualizer.COLORS[7], label='sentence embeddings')
+        
+        ax.legend()
+        plt.title(
+            f'Transformed hashtag-embedding for hashtag: "{hashtag}" in the '
+            f'sentence embedding space of all the tweets containing the hashtag ({len(tweets_containing_hashtag)})'
+        )
+
+        plt.show()
+
