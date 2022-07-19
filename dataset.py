@@ -98,12 +98,12 @@ class CachedDataset(torch.utils.data.Dataset):
         tweets_containing_hashtag = self._get_tweets_by_hashtag(hashtag)
         
         if self.num_hashtags_per_sent_emb_limit is not None:
-            random.shuffle(tweets_containing_hashtag)
+            random.shuffle(tweets_containing_hashtag) # TODO random.sample()
             tweets_containing_hashtag = tweets_containing_hashtag[:self.num_hashtags_per_sent_emb_limit]
         
         avg_sent_emb = self._memory_efficient_mean(
             tweets_containing_hashtag,
-            lambda tweet: self.sent_emb_model._generate_embedding(tweet.text),
+            lambda tweet: self.sent_emb_model.generate_embedding(tweet.text),
             dim=self.sent_emb_model.OUTPUT_DIM
         )
 

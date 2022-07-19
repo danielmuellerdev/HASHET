@@ -162,11 +162,11 @@ class HashtagVisualizer:
 
         tweets_containing_hashtag = hashtag_to_tweets[hashtag] 
 
-        sent_embs = [sent_emb_model._generate_embedding(tweet.text) for tweet in tweets_containing_hashtag]
+        sent_embs = [sent_emb_model.generate_embedding(tweet.text) for tweet in tweets_containing_hashtag]
 
         avg_sent_emb = CachedDataset._memory_efficient_mean(
             tweets_containing_hashtag,
-            lambda tweet: sent_emb_model._generate_embedding(tweet.text),
+            lambda tweet: sent_emb_model.generate_embedding(tweet.text),
             dim=sent_emb_model.OUTPUT_DIM
         )
 
