@@ -153,9 +153,9 @@ class DataModule(pl.LightningDataModule):
     @staticmethod
     def restore_from_file(split: int = None) -> 'DataModule':
         if split is not None:
-            train_file_path = 'save_files/train_dataset_split_{split}.pkl'
-            val_file_path = 'save_files/val_dataset_split_{split}.pkl'
-            test_file_path = 'save_files/test_dataset_split_{split}.pkl'
+            train_file_path = f'save_files/train_dataset_split_{split}.pkl'
+            val_file_path = f'save_files/val_dataset_split_{split}.pkl'
+            test_file_path = f'save_files/test_dataset_split_{split}.pkl'
         else:
             train_file_path = 'save_files/train_dataset.pkl'
             val_file_path = 'save_files/val_dataset.pkl'
