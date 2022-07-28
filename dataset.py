@@ -129,7 +129,7 @@ class DataModule(pl.LightningDataModule):
     def __init__(
         self, tweets: List[Tweet], word_emb_model: WordEmbeddingModel,
         sent_emb_model: SentenceEmbeddingModel,
-        batch_size: int = 2, train_val_test_split: Tuple[int] = (0.7, 0.1, 0.2),
+        batch_size: int = 1, train_val_test_split: Tuple[int] = (0.7, 0.1, 0.2),
         num_hashtags_per_sent_emb_limit: int = None,
         num_workers: int = 1
     ):
