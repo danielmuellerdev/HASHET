@@ -148,18 +148,29 @@ class DataModule(pl.LightningDataModule):
         self.train_dataset = None
         self.val_dataset = None
         self.test_dataset = None
+        self.split = None
 
     @staticmethod
-    def restore_from_file() -> 'DataModule':
-        train_dataset = CachedDataset.load_from_file('save_files/train_dataset.pkl')
-        val_dataset = CachedDataset.load_from_file('save_files/val_dataset.pkl')
-        test_dataset = CachedDataset.load_from_file('save_files/test_dataset.pkl')
+    def restore_from_file(split: int = None) -> 'DataModule':
+        if split is not None:
+            train_file_path = 'save_files/train_dataset_split_{split}.pkl'
+            val_file_path = 'save_files/val_dataset_split_{split}.pkl'
+            test_file_path = 'save_files/test_dataset_split_{split}.pkl'
+        else:
+            train_file_path = 'save_files/train_dataset.pkl'
+            val_file_path = 'save_files/val_dataset.pkl'
+            test_file_path = 'save_files/test_dataset.pkl'
+
+        train_dataset = CachedDataset.load_from_file(train_file_path)
+        val_dataset = CachedDataset.load_from_file(val_file_path)
+        test_dataset = CachedDataset.load_from_file(test_file_path)
 
         data_module = DataModule(None, None, None)
         data_module.train_dataset = train_dataset
         data_module.val_dataset = val_dataset
         data_module.test_dataset = test_dataset
         data_module.is_restored_from_file = True
+        data_module.split = split
 
         return data_module
 
