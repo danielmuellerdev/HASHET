@@ -1,4 +1,3 @@
-from numpy import identity
 import torch
 import pytorch_lightning as pl
 import tensorflow as tf

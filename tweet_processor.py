@@ -10,7 +10,6 @@ import unidecode
 import gensim
 
 from tweet import Tweet
-import constants as C
 
 
 class TweetProcessor:
@@ -172,7 +171,7 @@ class TweetProcessor:
         return [tweet for tweet in tweets if len(tweet.tokens) > 1]
 
     @staticmethod
-    def _remove_rare_hashtags_from_tweets(tweets: List[Tweet], hashtag_min_count: int = C.HASHTAG_MINCOUNT) -> None:
+    def _remove_rare_hashtags_from_tweets(tweets: List[Tweet], hashtag_min_count: int = 10) -> None:
         hashtag_count = Counter(hashtag for tweet in tweets for hashtag in tweet.hashtags)
 
         for tweet in tweets:
