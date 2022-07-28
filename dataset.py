@@ -176,10 +176,12 @@ class DataModule(pl.LightningDataModule):
 
     @staticmethod
     def _get_unique_hashtags(tweets: List[Tweet], word_emb_model: WordEmbeddingModel) -> List[str]:
-        unique_hashtags = list(set(hashtag for tweet in tweets for hashtag in tweet.hashtags))
-        unique_hashtags_in_w2v_vocab = word_emb_model.remove_hashtags_not_part_of_the_vocab(unique_hashtags)
-       
-        return unique_hashtags_in_w2v_vocab
+        return list(set(
+            hashtag
+            for tweet in tweets
+            for hashtag in tweet.hashtags
+            if hashtag in word_emb_model.vocab
+        ))
 
     @staticmethod
     def _split_into_train_val_test(hashtags: List[str], train_val_test_split: Tuple[int]) -> Tuple[List[str], List[str], List[str]]:

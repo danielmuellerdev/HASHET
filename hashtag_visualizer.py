@@ -1,7 +1,6 @@
-from typing import List, Tuple, Dict
+from typing import List, Tuple
 from pathlib import Path
 from collections import defaultdict
-import random
 
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
@@ -23,7 +22,7 @@ class HashtagVisualizer:
     ]
 
     def __init__(
-        self, sent_emb_tweets: List[Tweet], word_emb_model: WordEmbeddingModel, 
+        self, sent_emb_tweets: List[Tweet], word_emb_model: WordEmbeddingModel,
         hashtag_to_sent_mapper: Hashtag2SentMapper
     ):
         self.sent_emb_tweets = sent_emb_tweets
@@ -32,8 +31,12 @@ class HashtagVisualizer:
         
         self._pca = PCA(n_components=2)
         
-        self.unique_hashtags = set(hashtag for tweet in sent_emb_tweets for hashtag in tweet.hashtags)
-        self.unique_hashtags = word_emb_model.remove_hashtags_not_part_of_the_vocab(self.unique_hashtags)
+        self.unique_hashtags = set(
+            hashtag
+            for tweet in sent_emb_tweets
+            for hashtag in tweet.hashtags
+            if hashtag in word_emb_model.vocab
+        )
 
     @staticmethod
     def _get_hashtag_embeddings(
