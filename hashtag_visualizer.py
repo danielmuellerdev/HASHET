@@ -4,11 +4,12 @@ from collections import defaultdict
 
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
 import torch
 from torch import Tensor
 from matplotlib.axes import Axes
-from sentence_embedding_model import SentenceEmbeddingModel
 
+from sentence_embedding_model import SentenceEmbeddingModel
 from word_embedding_model import WordEmbeddingModel
 from hashtag_to_sent_mapper import Hashtag2SentMapper
 from tweet import Tweet
@@ -23,13 +24,15 @@ class HashtagVisualizer:
 
     def __init__(
         self, sent_emb_tweets: List[Tweet], word_emb_model: WordEmbeddingModel,
-        hashtag_to_sent_mapper: Hashtag2SentMapper
+        hashtag_to_sent_mapper: Hashtag2SentMapper,
+        pca_explained_variance_treshhold: float = 0.95
     ):
         self.sent_emb_tweets = sent_emb_tweets
         self._word_emb_model = word_emb_model
         self._hashtag_to_sent_mapper = hashtag_to_sent_mapper
         
-        self._pca = PCA(n_components=2)
+        self._pca = PCA(n_components=pca_explained_variance_treshhold, svd_solver='full')
+        self._tsne = TSNE()
         
         self.unique_hashtags = set(
             hashtag
@@ -54,14 +57,17 @@ class HashtagVisualizer:
         return torch.stack(hashtag_embs)
 
     @staticmethod
-    def _reduce_to_two_dimensions(tensor: Tensor, pca: PCA) -> Tensor:
-        return pca.fit_transform(tensor)
+    def _reduce_to_two_dimensions(tensor: Tensor, pca: PCA, tsne: TSNE) -> Tensor:
+        # reduce as many dims as possible while keeping the explained variance above a given treshhold
+        tensor_with_reduced_dims = pca.fit_transform(tensor)
+
+        return tsne.fit_transform(tensor_with_reduced_dims)
 
     def plot_all_hashtags(self, after_transformation: bool = False) -> None:
         hashtag_embs = self._get_hashtag_embeddings(
             self.unique_hashtags, self._word_emb_model, self._hashtag_to_sent_mapper, after_transformation
         )
-        two_dim_hashtag_embs = self._reduce_to_two_dimensions(hashtag_embs, self._pca)
+        two_dim_hashtag_embs = self._reduce_to_two_dimensions(hashtag_embs, self._pca, self._tsne)
 
         x, y = two_dim_hashtag_embs[:, 0], two_dim_hashtag_embs[:, 1]
 
@@ -118,7 +124,7 @@ class HashtagVisualizer:
         hashtag_embs = self._get_hashtag_embeddings(
             hashtags, self._word_emb_model, self._hashtag_to_sent_mapper, after_transformation
         )
-        two_dim_hashtag_embs = self._reduce_to_two_dimensions(hashtag_embs, self._pca)
+        two_dim_hashtag_embs = self._reduce_to_two_dimensions(hashtag_embs, self._pca, self._tsne)
 
         x, y = two_dim_hashtag_embs[:, 0], two_dim_hashtag_embs[:, 1]
         
@@ -150,10 +156,6 @@ class HashtagVisualizer:
         plt.show()
 
     def plot_a_hashtag(self, hashtag: str, sent_emb_model: SentenceEmbeddingModel) -> None:
-        hashtag_emb = self._get_hashtag_embeddings(
-            [hashtag], self._word_emb_model, self._hashtag_to_sent_mapper
-        )[0]
-
         transformed_hashtag_emb = self._get_hashtag_embeddings(
             [hashtag], self._word_emb_model, self._hashtag_to_sent_mapper, after_transformation=True
         )[0]
@@ -174,7 +176,7 @@ class HashtagVisualizer:
         )
 
         stacked_embs = torch.stack([avg_sent_emb] + [transformed_hashtag_emb] + sent_embs)
-        two_dim_embs = self._reduce_to_two_dimensions(stacked_embs, self._pca)
+        two_dim_embs = self._reduce_to_two_dimensions(stacked_embs, self._pca, self._tsne)
 
         x, y = two_dim_embs[:, 0], two_dim_embs[:, 1]
 
