@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import Dict, List, Set, Tuple
 from pathlib import Path
 from collections import defaultdict
 import random
@@ -13,6 +13,7 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score, adjusted_mutual_info_score
 from sklearn.preprocessing import LabelEncoder
 import numpy as np
+from mpl_toolkits.mplot3d import Axes3D # <--- This is important for 3d plotting 
 
 from sentence_embedding_model import SentenceEmbeddingModel
 from word_embedding_model import WordEmbeddingModel
@@ -24,7 +25,8 @@ from dataset import CachedDataset, DataModule
 class HashtagAnalyzer:
     COLORS = [
         'tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple',
-        'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive', 'tab:cyan'
+        'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive', 'tab:cyan',
+        'b', 'gold', 'lime', 'navy'
     ]
 
     def __init__(
@@ -69,7 +71,7 @@ class HashtagAnalyzer:
 
         return tsne.fit_transform(tensor_with_reduced_dims)
 
-    def plot_all_hashtags(self, after_transformation: bool = False) -> None:
+    def plot_all_hashtags(self, after_transformation: bool = False, save_to_file: bool = False) -> None:
         hashtag_embs = self._get_hashtag_embeddings(
             self.unique_hashtags, self._word_emb_model, self._hashtag_to_sent_mapper, after_transformation
         )
@@ -86,84 +88,97 @@ class HashtagAnalyzer:
             'All Hashtags in the Hashtag-embedding space '
             + ('[after transformation]' if after_transformation else '[Word2Vec]')
         )
-        plt.savefig(
-            'save_files/'
-            + 'all_hashtags_' + ('transformed' if after_transformation else 'word2vec') + '.png'
-        )
+        
+        if save_to_file:
+            plt.savefig(
+                'save_files/'
+                + 'all_hashtags_' + ('transformed' if after_transformation else 'word2vec') + '.png'
+            )
+        
         plt.show()
 
     @staticmethod
     def _read_topics_file(
-        topics_file_path: Path, word_emb_model: WordEmbeddingModel, seperator: str = ';'
+        topics_file_path: Path, word_emb_model: WordEmbeddingModel,
+        use_merged_topics: bool, selected_topics: Set[str] = None, seperator: str = ';'
     ) -> Tuple[List[str], List[str]]:
         hashtags, topics = [], []
         with open(topics_file_path, encoding='utf-8') as file:
-            for line in file.readlines(): # skip header line
-                hashtag, topic = line.strip().split(seperator)
+            for line in file.readlines():
+                hashtag, topic, merged_topic = line.strip().split(seperator)[:3]
 
-                if hashtag not in word_emb_model.vocab:
+                if use_merged_topics:
+                    topic = merged_topic
+
+                if (hashtag not in word_emb_model.vocab) or \
+                    (selected_topics is not None and topic not in selected_topics):
                     continue
 
                 hashtags.append(hashtag)
-
-                # TODO TEMP
-                if topic[0] == ' ':
-                    topic = topic[1:]
-
                 topics.append(topic)
         
         return hashtags, topics
 
     @staticmethod
     def _label_selected_hashtags(
-        hashtags: List[str], topics: List[str], ax: Axes, 
-        num_hashtags_to_label_per_topic: int, x: Tensor, y: Tensor
+        hashtags: List[str], topics: List[str], ax: Axes,
+        num_hashtags_to_label_per_topic: int, x: Tensor, y: Tensor, z: Tensor
     ) -> None:
         topic_to_num_hashtags_labeled = defaultdict(int)
         for i, (hashtag, topic) in enumerate(zip(hashtags, topics)):
             if topic_to_num_hashtags_labeled[topic] < num_hashtags_to_label_per_topic:
-                ax.annotate(hashtag, (x[i], y[i]))
+                ax.text(x[i], y[i], z[i], hashtag)
 
                 topic_to_num_hashtags_labeled[topic] += 1
 
     def plot_hashtags_with_topics(
         self, topics_file_path: Path, after_transformation: bool = False,
-        num_hashtags_to_label_per_topic: int = 3
+        num_hashtags_to_label_per_topic: int = 2, save_to_file: bool = False,
+        selected_topics: Set[str] = None, use_merged_topics: bool = False
      ) -> None:
-        hashtags, topics = self._read_topics_file(topics_file_path, self._word_emb_model)
+        """ Plots in 3D. """
+
+        hashtags, topics = self._read_topics_file(
+            topics_file_path, self._word_emb_model, use_merged_topics, selected_topics=selected_topics
+        )
 
         hashtag_embs = self._get_hashtag_embeddings(
             hashtags, self._word_emb_model, self._hashtag_to_sent_mapper, after_transformation
         )
-        two_dim_hashtag_embs = self._reduce_to_n_dimensions(hashtag_embs, self._pca, n=2)
+        three_dim_hashtag_embs = self._reduce_to_n_dimensions(hashtag_embs, self._pca, n=3)
 
-        x, y = two_dim_hashtag_embs[:, 0], two_dim_hashtag_embs[:, 1]
-        
-        fig, ax = plt.subplots()
+        x, y, z = three_dim_hashtag_embs[:, 0], three_dim_hashtag_embs[:, 1], three_dim_hashtag_embs[:, 2]
+
+        fig = plt.figure()
+        ax = fig.gca(projection='3d')
         fig.set_size_inches(20, 10)
         
-        topic_to_color_num = {topic: i for i, topic in enumerate(set(topics))}
+        unique_topics_ordered = list(dict.fromkeys(topics))
+        topic_to_color_num = {topic: i for i, topic in enumerate(unique_topics_ordered)}
         topic_to_stats = defaultdict(list)
         for i, topic in enumerate(topics):
-            topic_to_stats[topic].append((x[i], y[i]))
+            topic_to_stats[topic].append((x[i], y[i], z[i]))
 
         for topic, stats in topic_to_stats.items():
-            xs, ys = [x for x, _ in stats], [y for _, y in stats]
+            xs, ys, zs = [x for x, _, _ in stats], [y for _, y, _ in stats], [z for _, _, z in stats]
             color = HashtagAnalyzer.COLORS[topic_to_color_num[topic]]
-            ax.scatter(xs, ys, c=color, label=topic)
+            ax.scatter(xs, ys, zs, c=color, label=topic)
 
         ax.legend()
 
-        self._label_selected_hashtags(hashtags, topics, ax, num_hashtags_to_label_per_topic, x, y)
+        self._label_selected_hashtags(hashtags, topics, ax, num_hashtags_to_label_per_topic, x, y, z)
         
         plt.title(
             'Selected Hashtags with their topics in the Hashtag-embedding space '
             + ('[after transformation]' if after_transformation else '[Word2Vec]')
         )
-        plt.savefig(
-            'save_files/'
-            + 'selected_hashtags_with_topics_' + ('transformed' if after_transformation else 'word2vec') + '.png'
-        )
+        
+        if save_to_file:
+            plt.savefig(
+                'save_files/'
+                + 'selected_hashtags_with_topics_' + ('transformed' if after_transformation else 'word2vec') + '.png'
+            )
+        
         plt.show()
 
     def plot_a_hashtag(self, hashtag: str, sent_emb_model: SentenceEmbeddingModel) -> None:
@@ -252,13 +267,16 @@ class HashtagAnalyzer:
 
         plt.show()
 
-    def calculate_hashtag_embedding_metrics(self, topics_file_path: Path, after_transformation: bool = False, num_retries: int = 20):
-        hashtags, topics = self._read_topics_file(topics_file_path, self._word_emb_model)
+    def calculate_hashtag_embedding_metrics(
+        self, topics_file_path: Path, after_transformation: bool = False,
+        num_retries: int = 20, use_merged_topics: bool = False
+    ) -> Dict[str, float]:
+        hashtags, topics = self._read_topics_file(topics_file_path, self._word_emb_model, use_merged_topics)
 
         encoded_topics = LabelEncoder().fit_transform(topics)
 
         hashtag_embs = self._get_hashtag_embeddings(
-            hashtags, self._word_emb_model, self._hashtag_to_sent_mapper, after_transformation=after_transformation
+            hashtags, self._word_emb_model, self._hashtag_to_sent_mapper, after_transformation
         )
 
         num_topics = len(set(topics))
