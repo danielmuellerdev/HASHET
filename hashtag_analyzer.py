@@ -1,6 +1,7 @@
 from typing import List, Tuple
 from pathlib import Path
 from collections import defaultdict
+import random
 
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
@@ -8,15 +9,19 @@ from sklearn.manifold import TSNE
 import torch
 from torch import Tensor
 from matplotlib.axes import Axes
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score, adjusted_mutual_info_score
+from sklearn.preprocessing import LabelEncoder
+import numpy as np
 
 from sentence_embedding_model import SentenceEmbeddingModel
 from word_embedding_model import WordEmbeddingModel
 from hashtag_to_sent_mapper import Hashtag2SentMapper
 from tweet import Tweet
-from dataset import CachedDataset
+from dataset import CachedDataset, DataModule
 
 
-class HashtagVisualizer:
+class HashtagAnalyzer:
     COLORS = [
         'tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple',
         'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive', 'tab:cyan'
@@ -32,7 +37,6 @@ class HashtagVisualizer:
         self._hashtag_to_sent_mapper = hashtag_to_sent_mapper
         
         self._pca = PCA(n_components=pca_explained_variance_treshhold, svd_solver='full')
-        self._tsne = TSNE()
         
         self.unique_hashtags = set(
             hashtag
@@ -57,9 +61,11 @@ class HashtagVisualizer:
         return torch.stack(hashtag_embs)
 
     @staticmethod
-    def _reduce_to_two_dimensions(tensor: Tensor, pca: PCA, tsne: TSNE) -> Tensor:
+    def _reduce_to_n_dimensions(tensor: Tensor, pca: PCA, n: int) -> Tensor:
         # reduce as many dims as possible while keeping the explained variance above a given treshhold
         tensor_with_reduced_dims = pca.fit_transform(tensor)
+
+        tsne = TSNE(n_components=n)
 
         return tsne.fit_transform(tensor_with_reduced_dims)
 
@@ -67,7 +73,7 @@ class HashtagVisualizer:
         hashtag_embs = self._get_hashtag_embeddings(
             self.unique_hashtags, self._word_emb_model, self._hashtag_to_sent_mapper, after_transformation
         )
-        two_dim_hashtag_embs = self._reduce_to_two_dimensions(hashtag_embs, self._pca, self._tsne)
+        two_dim_hashtag_embs = self._reduce_to_n_dimensions(hashtag_embs, self._pca, n=2)
 
         x, y = two_dim_hashtag_embs[:, 0], two_dim_hashtag_embs[:, 1]
 
@@ -88,17 +94,22 @@ class HashtagVisualizer:
 
     @staticmethod
     def _read_topics_file(
-        topics_file_path: Path, word_emb_model: WordEmbeddingModel
+        topics_file_path: Path, word_emb_model: WordEmbeddingModel, seperator: str = ';'
     ) -> Tuple[List[str], List[str]]:
         hashtags, topics = [], []
         with open(topics_file_path, encoding='utf-8') as file:
-            for line in file.readlines()[1:]: # skip header line
-                hashtag, topic = line.strip().split(',')
+            for line in file.readlines(): # skip header line
+                hashtag, topic = line.strip().split(seperator)
 
                 if hashtag not in word_emb_model.vocab:
                     continue
 
                 hashtags.append(hashtag)
+
+                # TODO TEMP
+                if topic[0] == ' ':
+                    topic = topic[1:]
+
                 topics.append(topic)
         
         return hashtags, topics
@@ -124,7 +135,7 @@ class HashtagVisualizer:
         hashtag_embs = self._get_hashtag_embeddings(
             hashtags, self._word_emb_model, self._hashtag_to_sent_mapper, after_transformation
         )
-        two_dim_hashtag_embs = self._reduce_to_two_dimensions(hashtag_embs, self._pca, self._tsne)
+        two_dim_hashtag_embs = self._reduce_to_n_dimensions(hashtag_embs, self._pca, n=2)
 
         x, y = two_dim_hashtag_embs[:, 0], two_dim_hashtag_embs[:, 1]
         
@@ -138,7 +149,7 @@ class HashtagVisualizer:
 
         for topic, stats in topic_to_stats.items():
             xs, ys = [x for x, _ in stats], [y for _, y in stats]
-            color = HashtagVisualizer.COLORS[topic_to_color_num[topic]]
+            color = HashtagAnalyzer.COLORS[topic_to_color_num[topic]]
             ax.scatter(xs, ys, c=color, label=topic)
 
         ax.legend()
@@ -176,16 +187,16 @@ class HashtagVisualizer:
         )
 
         stacked_embs = torch.stack([avg_sent_emb] + [transformed_hashtag_emb] + sent_embs)
-        two_dim_embs = self._reduce_to_two_dimensions(stacked_embs, self._pca, self._tsne)
+        two_dim_embs = self._reduce_to_n_dimensions(stacked_embs, self._pca, n=2)
 
         x, y = two_dim_embs[:, 0], two_dim_embs[:, 1]
 
         fig, ax = plt.subplots()
         fig.set_size_inches(20, 10)
 
-        ax.scatter(x[0], y[0], c=HashtagVisualizer.COLORS[1], label='centroid')
-        ax.scatter(x[1], y[1], c=HashtagVisualizer.COLORS[3], label='predicted centroid')
-        ax.scatter(x[2:], y[2:], c=HashtagVisualizer.COLORS[7], label='sentence embeddings')
+        ax.scatter(x[0], y[0], c=HashtagAnalyzer.COLORS[1], label='centroid')
+        ax.scatter(x[1], y[1], c=HashtagAnalyzer.COLORS[3], label='predicted centroid')
+        ax.scatter(x[2:], y[2:], c=HashtagAnalyzer.COLORS[7], label='sentence embeddings')
         
         ax.legend()
         plt.title(
@@ -195,3 +206,76 @@ class HashtagVisualizer:
 
         plt.show()
 
+    def plot_sentence_embeddings_vs_centroids(
+        self, data_module: DataModule, sent_emb_model: SentenceEmbeddingModel, num_sent_embs_to_plot: int = 500, report_freq: int = 20
+    ) -> None:
+        tweets_to_plot = random.sample(self.sent_emb_tweets, num_sent_embs_to_plot)
+
+        sent_embs_to_plot = []
+        for i, tweet in enumerate(tweets_to_plot):
+            sent_embs_to_plot.append(sent_emb_model.generate_embedding(tweet.text))
+
+            if i % report_freq == 0:
+                print(f'retrieving sentence embeddings ... [{i} / {num_sent_embs_to_plot}]')
+
+        data_module.batch_size = 1
+
+        train_centroids = [batch['y'][0] for batch in data_module.train_dataloader()]
+        val_centroids = [batch['y'][0] for batch in data_module.val_dataloader()]
+        test_centroids = [batch['y'][0] for batch in data_module.test_dataloader()]
+
+        stacked_centroids = torch.stack(train_centroids + val_centroids + test_centroids + sent_embs_to_plot)
+
+        two_dim_stacked_centroids = self._reduce_to_n_dimensions(stacked_centroids, self._pca, n=2)
+
+        two_dim_train_centroids = two_dim_stacked_centroids[:len(train_centroids)]
+        two_dim_val_centroids = two_dim_stacked_centroids[len(train_centroids):len(train_centroids) + len(val_centroids)]
+        two_dim_test_centroids = two_dim_stacked_centroids[len(train_centroids) + len(val_centroids):len(train_centroids) + len(val_centroids) + len(test_centroids)]
+        two_dim_sent_embs = two_dim_stacked_centroids[len(train_centroids) + len(val_centroids) + len(test_centroids):]
+
+        train_x, train_y = two_dim_train_centroids[:, 0], two_dim_train_centroids[:, 1]
+        val_x, val_y = two_dim_val_centroids[:, 0], two_dim_val_centroids[:, 1]
+        test_x, test_y = two_dim_test_centroids[:, 0], two_dim_test_centroids[:, 1]
+        sent_embs_x, sent_embs_y = two_dim_sent_embs[:, 0], two_dim_sent_embs[:, 1]
+
+        print(stacked_centroids.shape, len(two_dim_train_centroids), len(two_dim_val_centroids), len(two_dim_test_centroids), len(two_dim_sent_embs))
+
+        fig, ax = plt.subplots()
+        fig.set_size_inches(20, 10)
+
+        ax.scatter(train_x, train_y, c=HashtagAnalyzer.COLORS[0], label='train centroids')
+        ax.scatter(val_x, val_y, c=HashtagAnalyzer.COLORS[1], label='validation centroids')
+        ax.scatter(test_x, test_y, c=HashtagAnalyzer.COLORS[2], label='test centroids')
+        ax.scatter(sent_embs_x, sent_embs_y, c=HashtagAnalyzer.COLORS[3], label='sentence embeddings (random sampled)')
+
+        ax.legend()
+
+        plt.show()
+
+    def calculate_hashtag_embedding_metrics(self, topics_file_path: Path, after_transformation: bool = False, num_retries: int = 20):
+        hashtags, topics = self._read_topics_file(topics_file_path, self._word_emb_model)
+
+        encoded_topics = LabelEncoder().fit_transform(topics)
+
+        hashtag_embs = self._get_hashtag_embeddings(
+            hashtags, self._word_emb_model, self._hashtag_to_sent_mapper, after_transformation=after_transformation
+        )
+
+        num_topics = len(set(topics))
+
+        silhouette_scores, ami_scores = [], []
+        for _ in range(num_retries):
+            clustered_hashtag_embs = KMeans(n_clusters=num_topics).fit_predict(hashtag_embs)
+
+            silhouette_scores.append(
+                silhouette_score(hashtag_embs, clustered_hashtag_embs)
+            )
+            ami_scores.append(
+                adjusted_mutual_info_score(clustered_hashtag_embs, encoded_topics)
+            )
+
+        return {
+                'clusters': num_topics,
+                'mean_silhouette': np.mean(silhouette_scores),
+                'mean_AMI': np.mean(ami_scores)
+            }
