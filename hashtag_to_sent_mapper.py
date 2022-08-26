@@ -10,16 +10,16 @@ class Hashtag2SentMapper(pl.LightningModule):
     
     def __init__(
         self, in_features: int, out_features: int,
-        hidden_layer1_size: int = 350, hidden_layer2_size: int = 250, learning_rate: float = 3e-5
+        hidden_layer1_size: int = 300, hidden_layer2_size: int = 500, learning_rate: float = 3e-5
     ):
         super().__init__()
         self.learning_rate = learning_rate
         self._model = nn.Sequential(
-          nn.Linear(in_features, hidden_layer1_size),
-          nn.ReLU(),
-          nn.Linear(hidden_layer1_size, hidden_layer2_size),
-          nn.ReLU(),
-          nn.Linear(hidden_layer2_size, out_features)
+            nn.Linear(in_features, hidden_layer1_size),
+            nn.ReLU(),
+            nn.Linear(hidden_layer1_size, hidden_layer2_size),
+            nn.ReLU(),
+            nn.Linear(hidden_layer2_size, out_features)
         )
 
         self._cosine_distance_loss = nn.CosineEmbeddingLoss()
