@@ -1,3 +1,4 @@
+from enum import Enum
 from typing import Dict, List, Set, Tuple
 from pathlib import Path
 from collections import defaultdict
@@ -13,7 +14,7 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score, adjusted_mutual_info_score
 from sklearn.preprocessing import LabelEncoder
 import numpy as np
-from mpl_toolkits.mplot3d import Axes3D # <--- This is important for 3d plotting 
+from mpl_toolkits.mplot3d import Axes3D # <--- This is important for 3d plotting
 
 from sentence_embedding_model import SentenceEmbeddingModel
 from word_embedding_model import WordEmbeddingModel
@@ -28,7 +29,16 @@ class HashtagAnalyzer:
         'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive', 'tab:cyan',
         'b', 'gold', 'lime', 'navy'
     ]
-
+    
+    class DimensionReductionMode(Enum):
+        PCA = 1
+        TSNE = 2
+        PCA_THEN_TSNE = 3
+    
+    class PlottingMode(Enum):
+        _2D = 1
+        _3D = 2
+        
     def __init__(
         self, sent_emb_tweets: List[Tweet], word_emb_model: WordEmbeddingModel,
         hashtag_to_sent_mapper: Hashtag2SentMapper,
@@ -38,7 +48,7 @@ class HashtagAnalyzer:
         self._word_emb_model = word_emb_model
         self._hashtag_to_sent_mapper = hashtag_to_sent_mapper
         
-        self._pca = PCA(n_components=pca_explained_variance_treshhold, svd_solver='full')
+        self._pca_with_treshhold = PCA(n_components=pca_explained_variance_treshhold, svd_solver='full')
         
         self.unique_hashtags = set(
             hashtag
@@ -63,19 +73,30 @@ class HashtagAnalyzer:
         return torch.stack(hashtag_embs)
 
     @staticmethod
-    def _reduce_to_n_dimensions(tensor: Tensor, pca: PCA, n: int) -> Tensor:
-        # reduce as many dims as possible while keeping the explained variance above a given treshhold
-        tensor_with_reduced_dims = pca.fit_transform(tensor)
+    def _reduce_to_n_dimensions(tensor: Tensor, pca_with_treshhold: PCA, mode: DimensionReductionMode, n: int) -> Tensor:
+        if mode == HashtagAnalyzer.DimensionReductionMode.PCA:
+            pca = PCA(n_components=n)
 
-        tsne = TSNE(n_components=n)
+            n_dim_tensor = pca.fit_transform(tensor)
+            print(f'PCA explained variance: {pca.explained_variance_ratio_}')
 
-        return tsne.fit_transform(tensor_with_reduced_dims)
+            return n_dim_tensor
+        elif mode == HashtagAnalyzer.DimensionReductionMode.TSNE:
+            return TSNE(n_components=n).fit_transform(tensor)
+        else: # pca_then_tsne
+            # reduce as many dims as possible while keeping the explained variance above a given treshhold
+            tensor_with_reduced_dims = pca_with_treshhold.fit_transform(tensor)
 
-    def plot_all_hashtags(self, after_transformation: bool = False, save_to_file: bool = False) -> None:
+            return TSNE(n_components=n).fit_transform(tensor_with_reduced_dims)
+
+    def plot_all_hashtags(
+        self, after_transformation: bool = False, save_to_file: bool = False,
+        dim_reduction_mode: DimensionReductionMode = DimensionReductionMode.PCA_THEN_TSNE
+    ) -> None:
         hashtag_embs = self._get_hashtag_embeddings(
             self.unique_hashtags, self._word_emb_model, self._hashtag_to_sent_mapper, after_transformation
         )
-        two_dim_hashtag_embs = self._reduce_to_n_dimensions(hashtag_embs, self._pca, n=2)
+        two_dim_hashtag_embs = self._reduce_to_n_dimensions(hashtag_embs, self._pca_with_treshhold, dim_reduction_mode, n=2)
 
         x, y = two_dim_hashtag_embs[:, 0], two_dim_hashtag_embs[:, 1]
 
@@ -87,12 +108,14 @@ class HashtagAnalyzer:
         plt.title(
             'All Hashtags in the Hashtag-embedding space '
             + ('[after transformation]' if after_transformation else '[Word2Vec]')
+            + f' [{dim_reduction_mode.name.upper()}]'
         )
         
         if save_to_file:
             plt.savefig(
                 'save_files/'
-                + 'all_hashtags_' + ('transformed' if after_transformation else 'word2vec') + '.png'
+                + 'all_hashtags_' + ('transformed' if after_transformation else 'word2vec')
+                + f'_{dim_reduction_mode.name}.png'
             )
         
         plt.show()
@@ -111,7 +134,7 @@ class HashtagAnalyzer:
                     topic = merged_topic
 
                 if (hashtag not in word_emb_model.vocab) or \
-                    (selected_topics is not None and topic not in selected_topics):
+                   (selected_topics is not None and topic not in selected_topics):
                     continue
 
                 hashtags.append(hashtag)
@@ -122,21 +145,25 @@ class HashtagAnalyzer:
     @staticmethod
     def _label_selected_hashtags(
         hashtags: List[str], topics: List[str], ax: Axes,
-        num_hashtags_to_label_per_topic: int, x: Tensor, y: Tensor, z: Tensor
+        num_hashtags_to_label_per_topic: int, x: Tensor, y: Tensor, z: Tensor = None
     ) -> None:
         topic_to_num_hashtags_labeled = defaultdict(int)
         for i, (hashtag, topic) in enumerate(zip(hashtags, topics)):
             if topic_to_num_hashtags_labeled[topic] < num_hashtags_to_label_per_topic:
-                ax.text(x[i], y[i], z[i], hashtag)
+                if z is None:
+                    ax.annotate(hashtag, (x[i], y[i]))
+                else:
+                    ax.text(x[i], y[i], z[i], hashtag)
 
                 topic_to_num_hashtags_labeled[topic] += 1
 
     def plot_hashtags_with_topics(
         self, topics_file_path: Path, after_transformation: bool = False,
         num_hashtags_to_label_per_topic: int = 2, save_to_file: bool = False,
-        selected_topics: Set[str] = None, use_merged_topics: bool = False
+        selected_topics: Set[str] = None, use_merged_topics: bool = False,
+        dim_reduction_mode: DimensionReductionMode = DimensionReductionMode.PCA_THEN_TSNE,
+        plotting_mode: PlottingMode = PlottingMode._2D
      ) -> None:
-        """ Plots in 3D. """
 
         hashtags, topics = self._read_topics_file(
             topics_file_path, self._word_emb_model, use_merged_topics, selected_topics=selected_topics
@@ -145,48 +172,66 @@ class HashtagAnalyzer:
         hashtag_embs = self._get_hashtag_embeddings(
             hashtags, self._word_emb_model, self._hashtag_to_sent_mapper, after_transformation
         )
-        three_dim_hashtag_embs = self._reduce_to_n_dimensions(hashtag_embs, self._pca, n=3)
 
-        x, y, z = three_dim_hashtag_embs[:, 0], three_dim_hashtag_embs[:, 1], three_dim_hashtag_embs[:, 2]
+        n = 2 if plotting_mode == self.PlottingMode._2D else 3
+        three_dim_hashtag_embs = self._reduce_to_n_dimensions(
+            hashtag_embs, self._pca_with_treshhold, dim_reduction_mode, n
+        )
+
+        x, y = three_dim_hashtag_embs[:, 0], three_dim_hashtag_embs[:, 1]
+        z = three_dim_hashtag_embs[:, 2] if plotting_mode == self.PlottingMode._3D else None
 
         fig = plt.figure()
-        ax = fig.gca(projection='3d')
+        ax = fig.gca() if plotting_mode == self.PlottingMode._2D else fig.gca(projection=('3d'))
         fig.set_size_inches(20, 10)
         
         unique_topics_ordered = list(dict.fromkeys(topics))
         topic_to_color_num = {topic: i for i, topic in enumerate(unique_topics_ordered)}
         topic_to_stats = defaultdict(list)
         for i, topic in enumerate(topics):
-            topic_to_stats[topic].append((x[i], y[i], z[i]))
+            if plotting_mode == self.PlottingMode._2D:
+                topic_to_stats[topic].append((x[i], y[i]))
+            else:
+                topic_to_stats[topic].append((x[i], y[i], z[i]))
 
         for topic, stats in topic_to_stats.items():
-            xs, ys, zs = [x for x, _, _ in stats], [y for _, y, _ in stats], [z for _, _, z in stats]
-            color = HashtagAnalyzer.COLORS[topic_to_color_num[topic]]
-            ax.scatter(xs, ys, zs, c=color, label=topic)
+            if plotting_mode == self.PlottingMode._2D:
+                xs, ys = [x for x, _ in stats], [y for _, y in stats]
+                color = HashtagAnalyzer.COLORS[topic_to_color_num[topic]]
+                ax.scatter(xs, ys, c=color, label=topic)
+            else:
+                xs, ys, zs = [x for x, _, _ in stats], [y for _, y, _ in stats], [z for _, _, z in stats]
+                color = HashtagAnalyzer.COLORS[topic_to_color_num[topic]]
+                ax.scatter(xs, ys, zs, c=color, label=topic)
 
         ax.legend()
 
         self._label_selected_hashtags(hashtags, topics, ax, num_hashtags_to_label_per_topic, x, y, z)
         
         plt.title(
-            'Selected Hashtags with their topics in the Hashtag-embedding space '
+            'Hashtags with their topics in the Hashtag-embedding space '
             + ('[after transformation]' if after_transformation else '[Word2Vec]')
+            + f' [{dim_reduction_mode.name.upper()}]'
         )
         
         if save_to_file:
             plt.savefig(
                 'save_files/'
-                + 'selected_hashtags_with_topics_' + ('transformed' if after_transformation else 'word2vec') + '.png'
+                + 'hashtags_with_topics_' + ('transformed' if after_transformation else 'word2vec')
+                + f'_{dim_reduction_mode.name}_{plotting_mode.name}.png'
             )
         
         plt.show()
 
-    def plot_a_hashtag(self, hashtag: str, sent_emb_model: SentenceEmbeddingModel) -> None:
+    def plot_a_hashtag(
+        self, hashtag: str, sent_emb_model: SentenceEmbeddingModel, 
+        dim_reduction_mode: DimensionReductionMode = DimensionReductionMode.PCA_THEN_TSNE
+    ) -> None:
         transformed_hashtag_emb = self._get_hashtag_embeddings(
             [hashtag], self._word_emb_model, self._hashtag_to_sent_mapper, after_transformation=True
         )[0]
         
-        hashtag_to_tweets = defaultdict(list) # TODO: als TweetManager Klasse?
+        hashtag_to_tweets = defaultdict(list)
         for tweet in self.sent_emb_tweets:
             for tweet_hashtag in tweet.hashtags:
                 hashtag_to_tweets[tweet_hashtag].append(tweet)
@@ -202,7 +247,9 @@ class HashtagAnalyzer:
         )
 
         stacked_embs = torch.stack([avg_sent_emb] + [transformed_hashtag_emb] + sent_embs)
-        two_dim_embs = self._reduce_to_n_dimensions(stacked_embs, self._pca, n=2)
+        two_dim_embs = self._reduce_to_n_dimensions(
+            stacked_embs, self._pca_with_treshhold, dim_reduction_mode, n=2
+        )
 
         x, y = two_dim_embs[:, 0], two_dim_embs[:, 1]
 
@@ -217,12 +264,15 @@ class HashtagAnalyzer:
         plt.title(
             f'Transformed hashtag-embedding for hashtag: "{hashtag}" in the '
             f'sentence embedding space of all the tweets containing the hashtag ({len(tweets_containing_hashtag)})'
+            f' [{dim_reduction_mode.name.upper()}]'
         )
 
         plt.show()
 
     def plot_sentence_embeddings_vs_centroids(
-        self, data_module: DataModule, sent_emb_model: SentenceEmbeddingModel, num_sent_embs_to_plot: int = 500, report_freq: int = 20
+        self, data_module: DataModule, sent_emb_model: SentenceEmbeddingModel, 
+        num_sent_embs_to_plot: int = 500, report_freq: int = 20,
+        dim_reduction_mode: DimensionReductionMode = DimensionReductionMode.PCA_THEN_TSNE
     ) -> None:
         tweets_to_plot = random.sample(self.sent_emb_tweets, num_sent_embs_to_plot)
 
@@ -241,7 +291,9 @@ class HashtagAnalyzer:
 
         stacked_centroids = torch.stack(train_centroids + val_centroids + test_centroids + sent_embs_to_plot)
 
-        two_dim_stacked_centroids = self._reduce_to_n_dimensions(stacked_centroids, self._pca, n=2)
+        two_dim_stacked_centroids = self._reduce_to_n_dimensions(
+            stacked_centroids, self._pca_with_treshhold, dim_reduction_mode, n=2
+        )
 
         two_dim_train_centroids = two_dim_stacked_centroids[:len(train_centroids)]
         two_dim_val_centroids = two_dim_stacked_centroids[len(train_centroids):len(train_centroids) + len(val_centroids)]
@@ -296,4 +348,4 @@ class HashtagAnalyzer:
                 'clusters': num_topics,
                 'mean_silhouette': np.mean(silhouette_scores),
                 'mean_AMI': np.mean(ami_scores)
-            }
+        }
