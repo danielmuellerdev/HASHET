@@ -26,7 +26,7 @@ class CachedDataset(torch.utils.data.Dataset):
         self.sent_emb_model = sent_emb_model
         self.num_hashtags_per_sent_emb_limit = num_hashtags_per_sent_emb_limit
 
-        self._hashtag_to_tweets = defaultdict(list) # TODO: als TweetManager Klasse?
+        self._hashtag_to_tweets = defaultdict(list)
         for tweet in tweets:
             for hashtag in tweet.hashtags:
                 self._hashtag_to_tweets[hashtag].append(tweet)
@@ -98,7 +98,7 @@ class CachedDataset(torch.utils.data.Dataset):
         tweets_containing_hashtag = self._get_tweets_by_hashtag(hashtag)
         
         if self.num_hashtags_per_sent_emb_limit is not None:
-            random.shuffle(tweets_containing_hashtag) # TODO random.sample()
+            random.shuffle(tweets_containing_hashtag)
             tweets_containing_hashtag = tweets_containing_hashtag[:self.num_hashtags_per_sent_emb_limit]
         
         avg_sent_emb = self._memory_efficient_mean(
@@ -134,7 +134,7 @@ class DataModule(pl.LightningDataModule):
         num_workers: int = 1
     ):
         super().__init__()
-        self.prepare_data_per_node = False # TODO brauche ich das immer noch?
+        self.prepare_data_per_node = False
 
         self._tweets = tweets
         self._word_emb_model = word_emb_model
